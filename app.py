@@ -6,7 +6,7 @@ from datetime import datetime
 
 # --- CẤU HÌNH GIAO DIỆN TRANG ---
 st.set_page_config(
-    page_title="Hệ thống Vĩ mô & Phân tích Tài chính Nguyên Bản",
+    page_title="Hệ thống Vĩ mô & Phân tích Tài chính AI",
     page_icon="📈",
     layout="wide"
 )
@@ -17,6 +17,18 @@ if 'community_db' not in st.session_state:
         {"Thời gian": "2026-10-15 09:30", "Thành viên": "tuyen@gmail.com", "Mã CK": "HPG", "Nhóm ngành": "Doanh nghiệp Thường", "Kết quả / Đánh giá": "F-Score: 7/9 | M-Score: -2.15 (An toàn)"},
         {"Thời gian": "2026-10-14 15:20", "Thành viên": "admin@gmail.com", "Mã CK": "VCB", "Nhóm ngành": "Ngân hàng Thương mại", "Kết quả / Đánh giá": "NPL: 1.2% (An toàn tốt)"}
     ]
+
+# --- KẾT NỐI GEMINI AI CLIENT AN TOÀN ---
+has_gemini = False
+ai_client = None
+try:
+    from google import genai
+    gemini_api_key = st.secrets.get("GEMINI_API_KEY", "")
+    if gemini_api_key:
+        ai_client = genai.Client(api_key=gemini_api_key)
+        has_gemini = True
+except Exception:
+    has_gemini = False
 
 # --- XÁC THỰC NGƯỜI DÙNG BẰNG GMAIL ---
 st.sidebar.title("🔐 Đăng nhập hệ thống")
@@ -33,15 +45,36 @@ else:
         "🔍 Phần 2: Chấm điểm BCTC (F-Score & M-Score chuẩn gốc)", 
         "📚 Phần 3: Kho Dữ liệu Cộng Đồng"
     ])
+    
+    # Tiện ích Trợ lý AI Gemini ở Sidebar
+    if has_gemini:
+        st.sidebar.markdown("---")
+        st.sidebar.subheader("🤖 Trợ lý AI Gemini Phân tích")
+        ai_prompt = st.sidebar.text_area("Hỏi AI về cổ phiếu hoặc vĩ mô:", placeholder="VD: Đánh giá triển vọng ngành thép khi tỷ giá biến động...")
+        if st.sidebar.button("💡 Gửi yêu cầu cho AI"):
+            if ai_prompt:
+                with st.spinner("Gemini đang phân tích chuyên sâu..."):
+                    try:
+                        response = ai_client.models.generate_content(
+                            model='gemini-2.5-flash',
+                            contents=f"Dưới góc độ chuyên gia tài chính và vĩ mô chứng khoán Việt Nam, hãy phân tích vấn đề sau một cách sắc sảo, ngắn gọn: {ai_prompt}"
+                        )
+                        st.sidebar.info(response.text)
+                    except Exception as e:
+                        st.sidebar.error(f"Lỗi gọi Gemini AI: {e}")
+            else:
+                st.sidebar.warning("Vui lòng nhập nội dung cần hỏi.")
+    else:
+        st.sidebar.markdown("---")
+        st.sidebar.info("💡 Mẹo: Cấu hình `GEMINI_API_KEY` trong Streamlit Secrets để kích hoạt Trợ lý AI thông minh.")
 
 # =====================================================================
-# PHẦN 1: DASHBOARD VĨ MÔ & BẢNG KIỂM MARKET TIMING (CHỦ ĐỘNG SÁT THỰC TẾ)
+# PHẦN 1: DASHBOARD VĨ MÔ & BẢNG KIỂM MARKET TIMING
 # =====================================================================
 if menu == "📊 Phần 1: Dashboard Vĩ Mô & Market Timing":
     st.title("📊 Phần 1: Dashboard Vĩ Mô & Bảng Kiểm Market Timing (Chủ động dữ liệu)")
     st.markdown("Nhập các thông số vĩ mô thực tế mới nhất để hệ thống kiểm định dòng tiền chính xác.")
     
-    # Khu vực nhập liệu thông số vĩ mô thực tế để người dùng tùy chỉnh hoàn toàn sát thực tế
     with st.expander("⚙️ Tùy chỉnh / Cập nhật số liệu vĩ mô thực tế mới nhất", expanded=True):
         c_i1, c_i2, c_i3, c_i4 = st.columns(4)
         with c_i1:
@@ -207,6 +240,17 @@ elif menu == "🔍 Phần 2: Chấm điểm BCTC (F-Score & M-Score chuẩn gố
             st.info("🟡 Sức khỏe tài chính ở mức trung bình / khá.")
         else:
             st.error("🔴 Sức khỏe tài chính yếu.")
+
+    # Tích hợp nút nhờ Gemini AI phân tích kết quả mã cổ phiếu ngay tại form
+    if has_gemini:
+        if st.button("🤖 Nhờ Gemini AI Phân tích sâu kết quả mã này", type="secondary"):
+            with st.spinner("AI đang lập báo cáo phân tích..."):
+                try:
+                    prompt_ai = f"Phân tích mã cổ phiếu {ticker_symbol} có điểm số Piotroski F-Score là {f_score}/9 và Beneish M-Score là {m_score:.2f}. Đánh giá sức khỏe tài chính và rủi ro thao túng BCTC của doanh nghiệp này dưới góc độ nhà đầu tư chuyên nghiệp."
+                    res_ai = ai_client.models.generate_content(model='gemini-2.5-flash', contents=prompt_ai)
+                    st.info(res_ai.text)
+                except Exception as e:
+                    st.error(f"Lỗi AI: {e}")
 
     if st.button("💾 Lưu kết quả vào Kho Dữ liệu Cộng Đồng", type="primary", use_container_width=True):
         result_text = f"F-Score: {f_score}/9 | M-Score: {m_score:.2f}"
