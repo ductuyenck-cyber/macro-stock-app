@@ -6,15 +6,15 @@ from datetime import datetime
 
 # --- CẤU HÌNH GIAO DIỆN TRANG ---
 st.set_page_config(
-    page_title="Hệ thống Vĩ mô & Phân tích Tài chính Cộng Đồng",
+    page_title="Hệ thống Vĩ mô & Phân tích Tài chính Nguyên Bản",
     page_icon="📈",
     layout="wide"
 )
 
-# --- KHỞI TẠO KHO LƯU TRỮ TẠM TRONG SESSION (CHO CỘNG ĐỒNG) ---
+# --- KHỞI TẠO KHO LƯU TRỮ TẠM TRONG SESSION (CỘNG ĐỒNG) ---
 if 'community_db' not in st.session_state:
     st.session_state['community_db'] = [
-        {"Thời gian": "2026-10-15 09:30", "Thành viên": "tuyen@gmail.com", "Mã CK": "HPG", "Nhóm ngành": "Doanh nghiệp Thường", "Kết quả / Đánh giá": "F-Score: 4/5 (Ổn định)"},
+        {"Thời gian": "2026-10-15 09:30", "Thành viên": "tuyen@gmail.com", "Mã CK": "HPG", "Nhóm ngành": "Doanh nghiệp Thường", "Kết quả / Đánh giá": "F-Score: 7/9 | M-Score: -2.15 (An toàn)"},
         {"Thời gian": "2026-10-14 15:20", "Thành viên": "admin@gmail.com", "Mã CK": "VCB", "Nhóm ngành": "Ngân hàng Thương mại", "Kết quả / Đánh giá": "NPL: 1.2% (An toàn tốt)"}
     ]
 
@@ -29,17 +29,17 @@ else:
     st.sidebar.success(f"Xin chào: {user_email}")
     st.sidebar.markdown("---")
     menu = st.sidebar.radio("Chọn phân hệ:", [
-        "📊 Phần 1: Dashboard Vĩ Mô Tự Động", 
-        "🔍 Phần 2: Nhập liệu BCTC & Đánh giá", 
+        "📊 Phần 1: Dashboard Vĩ Mô & Market Timing", 
+        "🔍 Phần 2: Chấm điểm BCTC (F-Score & M-Score chuẩn gốc)", 
         "📚 Phần 3: Kho Dữ liệu Cộng Đồng"
     ])
 
 # =====================================================================
-# PHẦN 1: DASHBOARD VĨ MÔ & THỊ TRƯỜNG TỰ ĐỘNG
+# PHẦN 1: DASHBOARD VĨ MÔ & MARKET TIMING
 # =====================================================================
-if menu == "📊 Phần 1: Dashboard Vĩ Mô Tự Động":
-    st.title("📊 Phần 1: Tổng quan Vĩ mô & Dòng tiền Thị trường")
-    st.markdown("Cập nhật tự động các chỉ số vĩ mô, lãi suất, tỷ giá và thanh khoản thị trường.")
+if menu == "📊 Phần 1: Dashboard Vĩ Mô & Market Timing":
+    st.title("📊 Phần 1: Dashboard Vĩ Mô & Bảng Kiểm Market Timing")
+    st.markdown("Hệ thống kiểm định sức khỏe dòng tiền vĩ mô để đưa ra chiến lược phân bổ vốn tối ưu.")
     
     col1, col2, col3, col4 = st.columns(4)
     with col1:
@@ -52,143 +52,166 @@ if menu == "📊 Phần 1: Dashboard Vĩ Mô Tự Động":
         st.metric(label="Thanh khoản Toàn thị trường", value="18,500 Tỷ", delta="+15%")
 
     st.markdown("---")
-    st.subheader("📈 Biến động Chỉ số Thị trường (VN-Index)")
     
+    st.subheader("🚦 BẢNG KIỂM VĨ MÔ SỐNG CÒN (MARKET TIMING) 🚦")
+    col_v1, col_v2 = st.columns(2)
+    with col_v1:
+        laisuat = st.selectbox("1. Xu hướng Lãi suất & OMO:", ["Giảm / Nới lỏng (Tốt)", "Đi ngang (Bình thường)", "Tăng / Thắt chặt (Xấu)"])
+        tygia = st.selectbox("2. Tỷ giá USD/VND:", ["Ổn định, dưới 25.000 (Tốt)", "Căng thẳng, vượt 25.000 (Xấu)"])
+    with col_v2:
+        dxy = st.selectbox("3. Chỉ số Sức mạnh Đồng Đô la (DXY):", ["Dưới 102 (Tốt)", "Từ 102 đến 105 (Bình thường)", "Vượt 105 (Xấu)"])
+        nhnn = st.selectbox("4. Động thái của NHNN:", ["Bơm tiền / Mua USD vào (Tốt)", "Không can thiệp (Bình thường)", "Hút Tín phiếu / Bán USD ra (Xấu)"])
+        
+    if st.button("🔍 ĐÁNH GIÁ THỊ TRƯỜNG", type="primary", use_container_width=True):
+        if "Xấu" in laisuat or "Xấu" in tygia or "Vượt 105" in dxy or "Hút Tín phiếu" in nhnn:
+            st.error("### 🔴 ĐÈN ĐỎ (Defense / Retreat)\n**Hành động:** PHÒNG THỦ TUYỆT ĐỐI. Bán hết cổ phiếu đầu cơ. Tỷ lệ tiền mặt 80-100%.")
+        elif "Giảm" in laisuat and "Ổn định" in tygia and "Dưới 102" in dxy and "Bơm tiền" in nhnn:
+            st.success("### 🟢 ĐÈN XANH (All-in / Attack)\n**Hành động:** TẤN CÔNG TỔNG LỰC. Đánh Full tài khoản. Sử dụng Margin tối đa.")
+        else:
+            st.warning("### 🟡 ĐÈN VÀNG (Guerrilla / Hit & Run)\n**Hành động:** ĐÁNH DU KÍCH. Tỷ trọng 30-50% tiền mặt. Không dùng Margin.")
+
+    st.markdown("---")
+    st.subheader("📈 Biến động Chỉ số Thị trường (VN-Index)")
     try:
         from vnstock import stock_historical_data
         df_index = stock_historical_data(symbol='VNINDEX', start_date='2026-01-01', end_date='2026-10-15', resolution='1D')
         if not df_index.empty:
             fig = px.line(df_index, x='time', y='close', title='Biến động VN-Index (Dữ liệu thực tế từ vnstock)')
-            fig.update_layout(xaxis_title='Thời gian', yaxis_title='Điểm số')
             st.plotly_chart(fig, use_container_width=True)
         else:
-            st.info("Đang tải dữ liệu biểu đồ từ vnstock...")
+            raise Exception()
     except Exception:
-        st.info("💡 Đang hiển thị biểu đồ mô phỏng xu hướng thị trường.")
         df_dummy = pd.DataFrame({'time': ['Th 1', 'Th 4', 'Th 7', 'Th 10'], 'close': [1200, 1250, 1230, 1285]})
         fig = px.line(df_dummy, x='time', y='close', title='Biến động VN-Index (Mô phỏng)')
         st.plotly_chart(fig, use_container_width=True)
 
-    st.info("💡 **Nhận định vĩ mô tự động:** Thanh khoản hệ thống duy trì ổn định, áp lực tỷ giá hạ nhiệt giúp dòng tiền phân hóa tích cực vào các cổ phiếu có nền tảng cơ bản tốt.")
-
 # =====================================================================
-# PHẦN 2: NHẬP LIỆU BCTC THÔ & TÍNH TOÁN THEO 3 NHÓM NGÀNH
+# PHẦN 2: CHẤM ĐIỂM BCTC (F-SCORE & M-SCORE CHUẨN GỐC)
 # =====================================================================
-elif menu == "🔍 Phần 2: Nhập liệu BCTC & Đánh giá":
-    st.title("🔍 Phần 2: Công cụ Chấm điểm & Cảnh báo Chuyên sâu")
-    st.markdown(f"Thành viên phân tích: **{user_email}**")
+elif menu == "🔍 Phần 2: Chấm điểm BCTC (F-Score & M-Score chuẩn gốc)":
+    st.title("🔍 Hệ Thống Đánh Giá Doanh Nghiệp (Gốc Nguyên Bản)")
+    st.markdown(f"Thành viên phân tích: **{user_email}** | Tích hợp **Piotroski F-Score (9 Tiêu chí)** & **Beneish M-Score (8 biến gốc)**")
     
-    stock_code = st.text_input("Nhập mã cổ phiếu cần đánh giá (VD: HPG, VCB, SSI):", "HPG").upper()
-    industry = st.selectbox("Chọn nhóm ngành của doanh nghiệp:", [
-        "1. Doanh nghiệp Thường (Sản xuất, Thương mại, Dịch vụ)", 
-        "2. Ngân hàng Thương mại", 
-        "3. Công ty Chứng khoán"
-    ])
+    ticker_symbol = st.text_input("Mã Cổ Phiếu / Doanh Nghiệp (VD: HPG, VNM, FPT):", "HPG").upper()
     
     st.markdown("---")
     
-    # --- FORM 1: DOANH NGHIỆP THƯỜNG ---
-    if "Doanh nghiệp Thường" in industry:
-        st.subheader("📝 Nhập số liệu thô từ BCTC (Tính F-Score & M-Score)")
-        col_a, col_b = st.columns(2)
-        with col_a:
-            net_income = st.number_input("Lợi nhuận sau thuế (Tỷ VNĐ):", value=500.0)
-            cfo = st.number_input("Dòng tiền thuần từ HĐKD - CFO (Tỷ VNĐ):", value=600.0)
-            roa = st.number_input("ROA kỳ này (%):", value=8.0)
-            current_ratio = st.number_input("Khả năng thanh toán hiện hành:", value=1.5)
-        with col_b:
-            gross_margin = st.number_input("Biên lợi nhuận gộp (%):", value=20.0)
-            asset_turnover = st.number_input("Vòng quay tài sản:", value=0.9)
-            dsrgi = st.number_input("Chỉ số phải thu khách hàng (DSRI):", value=1.0)
-            sgi = st.number_input("Chỉ số tăng trưởng doanh thu (SGI):", value=1.1)
-            
-        if st.button("🚀 Chạy thuật toán chấm điểm", type="primary"):
-            score_f = (1 if net_income > 0 else 0) + (1 if cfo > 0 else 0) + (1 if roa > 0 else 0) + (1 if cfo > net_income else 0) + (1 if current_ratio > 1.2 else 0)
-            m_score = -2.25 + (0.92 * dsrgi) + (0.89 * sgi)
-            
-            result_text = f"F-Score: {score_f}/5 điểm | M-Score: {m_score:.2f}"
-            st.success(f"✅ Đã phân tích xong mã **{stock_code}**!")
-            
-            col_r1, col_r2 = st.columns(2)
-            col_r1.metric("Piotroski F-Score", f"{score_f} / 5 điểm")
-            col_r2.metric("Beneish M-Score", f"{m_score:.2f}")
-            
-            if m_score > -1.78:
-                st.error("🚨 Cảnh báo: Có dấu hiệu rủi ro thao túng BCTC!")
-            else:
-                st.success("🟢 An toàn: Không phát hiện rủi ro thao túng lớn.")
-                
-            # Lưu vào kho cộng đồng
-            st.session_state['community_db'].insert(0, {
-                "Thời gian": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                "Thành viên": user_email,
-                "Mã CK": stock_code,
-                "Nhóm ngành": "Doanh nghiệp Thường",
-                "Kết quả / Đánh giá": result_text
-            })
-            st.toast("Đã tự động lưu kết quả vào Kho dữ liệu cộng đồng!", icon="💾")
+    col_t, col_t1 = st.columns(2)
+    
+    # --- NĂM NAY (t) ---
+    with col_t:
+        st.subheader("🟢 NĂM NAY (Năm t)")
+        rev_t = st.number_input("Doanh thu thuần (Sales_t)", value=10000.0)
+        rec_t = st.number_input("Phải thu khách hàng (Rec_t)", value=1500.0)
+        cogs_t = st.number_input("Giá vốn hàng bán (COGS_t)", value=7000.0)
+        ca_t = st.number_input("Tài sản ngắn hạn (CA_t)", value=4000.0)
+        ppe_t = st.number_input("Giá trị còn lại TSCĐ hữu hình (Net PP&E_t)", value=5000.0)
+        dep_t = st.number_input("Chi phí khấu hao trong năm (Dep_t)", value=400.0)
+        sga_t = st.number_input("Chi phí bán hàng & Quản lý (SG&A_t)", value=1000.0)
+        ltd_t = st.number_input("Nợ dài hạn (Long-term Debt_t)", value=2000.0)
+        cl_t = st.number_input("Nợ ngắn hạn (Current Liabilities_t)", value=3000.0)
+        ni_t = st.number_input("Lợi nhuận sau thuế (Net Income_t)", value=1000.0)
+        cfo_t = st.number_input("Dòng tiền từ HĐKD (CFO_t)", value=1200.0)
+        ta_t = st.number_input("Tổng tài sản (Total Assets_t)", value=12000.0)
+        shares_t = st.number_input("Số lượng cổ phiếu lưu hành (Shares_t)", value=1000.0)
 
-    # --- FORM 2: NGÂN HÀNG ---
-    elif "Ngân hàng Thương mại" in industry:
-        st.subheader("📝 Nhập số liệu thô cho Ngân hàng (Chuẩn CAMELS)")
-        col_n1, col_n2 = st.columns(2)
-        with col_n1:
-            npl_ratio = st.number_input("Tỷ lệ Nợ xấu - NPL (%):", value=1.8)
-            llr_ratio = st.number_input("Tỷ lệ bao phủ nợ xấu - LLR (%):", value=110.0)
-            nim_ratio = st.number_input("Biên lãi ròng - NIM (%):", value=3.5)
-        with col_n2:
-            ldr_ratio = st.number_input("Tỷ lệ LDR (Cho vay / Huy động) (%):", value=82.0)
-            car_ratio = st.number_input("Tỷ lệ an toàn vốn - CAR (%):", value=11.5)
-            
-        if st.button("🚀 Đánh giá sức khỏe Ngân hàng", type="primary"):
-            result_text = f"NPL: {npl_ratio}% | LLR: {llr_ratio}% | NIM: {nim_ratio}%"
-            st.success(f"✅ Đã phân tích Ngân hàng **{stock_code}**!")
-            st.metric("Tỷ lệ Nợ xấu (NPL)", f"{npl_ratio}%")
-            
-            if npl_ratio > 3.0:
-                st.error("🔴 CẢNH BÁO: Tỷ lệ nợ xấu vượt mức an toàn 3%!")
-            else:
-                st.success("🟢 Chất lượng tài sản ngân hàng nằm trong vùng kiểm soát tốt.")
-                
-            st.session_state['community_db'].insert(0, {
-                "Thời gian": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                "Thành viên": user_email,
-                "Mã CK": stock_code,
-                "Nhóm ngành": "Ngân hàng Thương mại",
-                "Kết quả / Đánh giá": result_text
-            })
-            st.toast("Đã tự động lưu kết quả vào Kho dữ liệu cộng đồng!", icon="💾")
+    # --- NĂM TRƯỚC (t-1) ---
+    with col_t1:
+        st.subheader("🟠 NĂM TRƯỚC (Năm t-1)")
+        rev_t1 = st.number_input("Doanh thu thuần (Sales_t-1)", value=9000.0)
+        rec_t1 = st.number_input("Phải thu khách hàng (Rec_t-1)", value=1300.0)
+        cogs_t1 = st.number_input("Giá vốn hàng bán (COGS_t-1)", value=6300.0)
+        ca_t1 = st.number_input("Tài sản ngắn hạn (CA_t-1)", value=3800.0)
+        ppe_t1 = st.number_input("Giá trị còn lại TSCĐ hữu hình (Net PP&E_t-1)", value=4800.0)
+        dep_t1 = st.number_input("Chi phí khấu hao trong năm (Dep_t-1)", value=380.0)
+        sga_t1 = st.number_input("Chi phí bán hàng & Quản lý (SG&A_t-1)", value=900.0)
+        ltd_t1 = st.number_input("Nợ dài hạn (Long-term Debt_t-1)", value=2200.0)
+        cl_t1 = st.number_input("Nợ ngắn hạn (Current Liabilities_t-1)", value=2900.0)
+        ni_t1 = st.number_input("Lợi nhuận sau thuế (Net Income_t-1)", value=900.0)
+        st.markdown("*(CFO t-1 không dùng)*")
+        ta_t1 = st.number_input("Tổng tài sản (Total Assets_t-1)", value=11000.0)
+        shares_t1 = st.number_input("Số lượng cổ phiếu lưu hành (Shares_t-1)", value=1000.0)
 
-    # --- FORM 3: CÔNG TY CHỨNG KHOÁN ---
-    elif "Công ty Chứng khoán" in industry:
-        st.subheader("📝 Nhập số liệu thô cho Công ty Chứng khoán")
-        col_s1, col_s2 = st.columns(2)
-        with col_s1:
-            margin_debt = st.number_input("Tổng dư nợ cho vay Margin (Tỷ VNĐ):", value=5000.0)
-            equity = st.number_input("Vốn chủ sở hữu (Tỷ VNĐ):", value=4000.0)
-        with col_s2:
-            fvtpl_ratio = st.number_input("Tỷ trọng tài sản FVTPL / Tổng tài sản (%):", value=25.0)
-            roe = st.number_input("ROE (%):", value=15.0)
-            
-        if st.button("🚀 Đánh giá Công ty Chứng khoán", type="primary"):
-            leverage = margin_debt / equity
-            result_text = f"Đòn bẩy Margin: {leverage:.2f}x | ROE: {roe}%"
-            st.success(f"✅ Đã phân tích Công ty Chứng khoán **{stock_code}**!")
-            st.metric("Hệ số đòn bẩy Margin", f"{leverage:.2f}x")
-            
-            if leverage > 2.0:
-                st.warning("⚠️ Lưu ý: Đòn bẩy cho vay margin đang ở mức cao.")
-            else:
-                st.success("🟢 Mức độ đòn bẩy an toàn.")
-                
-            st.session_state['community_db'].insert(0, {
-                "Thời gian": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                "Thành viên": user_email,
-                "Mã CK": stock_code,
-                "Nhóm ngành": "Công ty Chứng khoán",
-                "Kết quả / Đánh giá": result_text
-            })
-            st.toast("Đã tự động lưu kết quả vào Kho dữ liệu cộng đồng!", icon="💾")
+    st.markdown("---")
+
+    # --- TÍNH TOÁN THUẬT TOÁN ---
+    safe_div = lambda n, d: n / d if d != 0 else 0
+
+    # 1. Beneish M-Score (8 biến gốc)
+    dsri = safe_div(safe_div(rec_t, rev_t), safe_div(rec_t1, rev_t1))
+    gm_t1 = safe_div(rev_t1 - cogs_t1, rev_t1)
+    gm_t = safe_div(rev_t - cogs_t, rev_t)
+    gmi = safe_div(gm_t1, gm_t)
+
+    non_ca_t = 1 - safe_div(ca_t + ppe_t, ta_t)
+    non_ca_t1 = 1 - safe_div(ca_t1 + ppe_t1, ta_t1)
+    aqi = safe_div(non_ca_t, non_ca_t1)
+
+    sgi = safe_div(rev_t, rev_t1)
+    rate_t1 = safe_div(dep_t1, ppe_t1 + dep_t1)
+    rate_t = safe_div(dep_t, ppe_t + dep_t)
+    depi = safe_div(rate_t1, rate_t)
+
+    sgai = safe_div(safe_div(sga_t, rev_t), safe_div(sga_t1, rev_t1))
+    lvgi = safe_div(safe_div(ltd_t + cl_t, ta_t), safe_div(ltd_t1 + cl_t1, ta_t1))
+    tata = safe_div(ni_t - cfo_t, ta_t)
+
+    m_score = -4.84 + (0.920 * dsri) + (0.528 * gmi) + (0.404 * aqi) + (0.892 * sgi) + (0.115 * depi) - (0.172 * sgai) + (-0.327 * lvgi) + (4.679 * tata)
+
+    # 2. Piotroski F-Score (9 tiêu chí)
+    roa_t = safe_div(ni_t, (ta_t + ta_t1) / 2)
+    roa_t1 = safe_div(ni_t1, ta_t1)
+    ltd_ratio_t = safe_div(ltd_t, ta_t)
+    ltd_ratio_t1 = safe_div(ltd_t1, ta_t1)
+    gm_changed = gm_t - gm_t1
+    turnover_t = safe_div(rev_t, ta_t)
+    turnover_t1 = safe_div(rev_t1, ta_t1)
+
+    f_criteria = [
+        ("1. LNST năm nay dương? (ROA > 0)", ni_t > 0),
+        ("2. Dòng tiền kinh doanh dương? (CFO > 0)", cfo_t > 0),
+        ("3. ROA cải thiện?", roa_t > roa_t1),
+        ("4. Chất lượng dòng tiền (CFO > LNST)?", cfo_t > ni_t),
+        ("5. Tỷ lệ nợ dài hạn giảm?", ltd_ratio_t < ltd_ratio_t1),
+        ("6. Khả năng thanh toán ngắn hạn cải thiện?", safe_div(ca_t, cl_t) > safe_div(ca_t1, cl_t1)),
+        ("7. Số cổ phiếu lưu hành không tăng?", shares_t <= shares_t1),
+        ("8. Biên lợi nhuận gộp cải thiện?", gm_changed > 0),
+        ("9. Vòng quay tài sản cải thiện?", (turnover_t - turnover_t1) > 0)
+    ]
+    f_score = sum(1 for _, pass_val in f_criteria if pass_val)
+
+    # Hiển thị kết quả trực quan
+    col_res1, col_res2 = st.columns(2)
+    
+    with col_res1:
+        st.subheader("🚨 Beneish M-Score (Mô hình 8 biến)")
+        st.metric("Chỉ số M-Score", f"{m_score:.2f}", delta="Ngưỡng: -1.78" if m_score <= -1.78 else "Cảnh báo vượt ngưỡng", delta_color="normal" if m_score <= -1.78 else "inverse")
+        if m_score > -1.78:
+            st.error("⚠️ M-Score vượt ngưỡng -1.78: Cần kiểm tra sâu BCTC.")
+        else:
+            st.success("🟢 An toàn: Không vượt ngưỡng cảnh báo thao túng.")
+
+    with col_res2:
+        st.subheader("🛡️ Piotroski F-Score (9 Tiêu chí)")
+        st.metric("Chỉ số F-Score", f"{f_score} / 9", delta="Rất Khỏe" if f_score >= 8 else ("Trung Bình" if f_score >= 5 else "Yếu"))
+        if f_score >= 8:
+            st.success("🟢 Doanh nghiệp có nền tảng tài chính rất khỏe.")
+        elif f_score >= 5:
+            st.info("🟡 Sức khỏe tài chính ở mức trung bình / khá.")
+        else:
+            st.error("🔴 Sức khỏe tài chính yếu.")
+
+    # Nút bấm lưu kết quả
+    if st.button("💾 Lưu kết quả vào Kho Dữ liệu Cộng Đồng", type="primary", use_container_width=True):
+        result_text = f"F-Score: {f_score}/9 | M-Score: {m_score:.2f}"
+        st.session_state['community_db'].insert(0, {
+            "Thời gian": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "Thành viên": user_email,
+            "Mã CK": ticker_symbol,
+            "Nhóm ngành": "Doanh nghiệp Thường",
+            "Kết quả / Đánh giá": result_text
+        })
+        st.success(f"Đã lưu thành công mã **{ticker_symbol}** vào Kho dữ liệu cộng đồng!")
 
 # =====================================================================
 # PHẦN 3: KHO DỮ LIỆU CỘNG ĐỒNG
