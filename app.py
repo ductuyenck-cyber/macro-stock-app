@@ -35,36 +35,37 @@ else:
     ])
 
 # =====================================================================
-# PHẦN 1: DASHBOARD VĨ MÔ & MARKET TIMING (CẬP NHẬT THỰC TẾ)
+# PHẦN 1: DASHBOARD VĨ MÔ & BẢNG KIỂM MARKET TIMING (CHỦ ĐỘNG SÁT THỰC TẾ)
 # =====================================================================
 if menu == "📊 Phần 1: Dashboard Vĩ Mô & Market Timing":
-    st.title("📊 Phần 1: Dashboard Vĩ Mô & Bảng Kiểm Market Timing (Thời gian thực)")
-    st.markdown("Hệ thống tổng hợp và kiểm định dòng tiền vĩ mô từ dữ liệu thị trường.")
+    st.title("📊 Phần 1: Dashboard Vĩ Mô & Bảng Kiểm Market Timing (Chủ động dữ liệu)")
+    st.markdown("Nhập các thông số vĩ mô thực tế mới nhất để hệ thống kiểm định dòng tiền chính xác.")
     
-    # Khu vực lấy dữ liệu vĩ mô thực tế (có cơ chế dự phòng an toàn)
-    dxy_val, rate_on, central_rate, market_liquidity = "103.50", "4.25%", "24,250 VND", "18,500 Tỷ"
-    try:
-        # Thử kết nối lấy dữ liệu thị trường qua vnstock nếu khả dụng
-        from vnstock import market_overview
-        # Logic bóc tách dữ liệu vĩ mô/thị trường thực tế có thể đặt ở đây
-    except Exception:
-        pass
+    # Khu vực nhập liệu thông số vĩ mô thực tế để người dùng tùy chỉnh hoàn toàn sát thực tế
+    with st.expander("⚙️ Tùy chỉnh / Cập nhật số liệu vĩ mô thực tế mới nhất", expanded=True):
+        c_i1, c_i2, c_i3, c_i4 = st.columns(4)
+        with c_i1:
+            input_central_rate = st.text_input("Tỷ giá Trung tâm (SBV)", value="24,250 VND")
+        with c_i2:
+            input_rate_on = st.text_input("Lãi suất Liên ngân hàng (ON)", value="4.25%")
+        with c_i3:
+            input_dxy = st.text_input("Chỉ số DXY", value="103.50")
+        with c_i4:
+            input_liquidity = st.text_input("Thanh khoản HOSE", value="18,500 Tỷ")
 
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        st.metric(label="Tỷ giá Trung tâm (SBV)", value=central_rate, delta="+15 VND", help="Cập nhật theo thông báo Ngân hàng Nhà nước")
+        st.metric(label="Tỷ giá Trung tâm (SBV)", value=input_central_rate)
     with col2:
-        st.metric(label="Lãi suất Liên ngân hàng (ON)", value=rate_on, delta="+0.10%", help="Lãi suất chào bình quân liên ngân hàng kỳ hạn qua đêm")
+        st.metric(label="Lãi suất Liên ngân hàng (ON)", value=input_rate_on)
     with col3:
-        st.metric(label="Chỉ số Sức mạnh Đô-la (DXY)", value=dxy_val, delta="-0.25", help="Biến động chỉ số USD Index quốc tế")
+        st.metric(label="Chỉ số Sức mạnh Đô-la (DXY)", value=input_dxy)
     with col4:
-        st.metric(label="Thanh khoản HOSE", value=market_liquidity, delta="+15%", help="Tổng giá trị giao dịch khớp lệnh toàn sàn")
+        st.metric(label="Thanh khoản HOSE", value=input_liquidity)
 
     st.markdown("---")
     
     st.subheader("🚦 BẢNG KIỂM VĨ MÔ SỐNG CÒN (MARKET TIMING) 🚦")
-    st.markdown("Đánh giá trạng thái thực tế để đưa ra quyết định chiến lược:")
-    
     col_v1, col_v2 = st.columns(2)
     with col_v1:
         laisuat = st.selectbox("1. Xu hướng Lãi suất & OMO:", ["Giảm / Nới lỏng (Tốt)", "Đi ngang (Bình thường)", "Tăng / Thắt chặt (Xấu)"])
@@ -145,7 +146,6 @@ elif menu == "🔍 Phần 2: Chấm điểm BCTC (F-Score & M-Score chuẩn gố
 
     st.markdown("---")
 
-    # Thuật toán tính toán
     safe_div = lambda n, d: n / d if d != 0 else 0
 
     dsri = safe_div(safe_div(rec_t, rev_t), safe_div(rec_t1, rev_t1))
