@@ -2,6 +2,19 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from datetime import datetime
+import streamlit as st
+import streamlit.components.v1 as components
+
+# --- NHÚNG GOOGLE FORM TRỰC TIẾP TRÊN GIAO DIỆN ---
+st.sidebar.markdown("---")
+with st.sidebar.expander("📝 Chưa có tài khoản? Đăng ký ngay"):
+    st.markdown("Điền thông tin bên dưới để được cấp quyền:")
+    
+    # 💡 THAY LINK EMBED GOOGLE FORM CỦA BẠN VÀO ĐÂY (Link có đuôi ?embedded=true)
+    form_embed_url = "https://docs.google.com/forms/d/e/1FAIpQLSd.../viewform?embedded=true"
+    
+    # Nhúng form vào sidebar hoặc màn hình chính
+    components.iframe(form_embed_url, height=450, scrolling=True)
 
 # --- CẤU HÌNH GIAO DIỆN TRANG ---
 st.set_page_config(
