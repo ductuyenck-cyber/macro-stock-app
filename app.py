@@ -1,7 +1,5 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
-import plotly.express as px
 from datetime import datetime
 
 # --- CẤU HÌNH GIAO DIỆN TRANG ---
@@ -11,7 +9,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- HÀM ẨN DANH EMAIL (GIỮ BẢO MẬT) ---
+# --- HÀM ẨN DANH EMAIL (GIÚP BẢO MẬT KHÔNG LỘ EMAIL TRÊN WEB) ---
 def mask_email(email):
     if not email or "@" not in email:
         return "Ẩn danh"
@@ -24,69 +22,42 @@ def mask_email(email):
         masked_name = name[:2] + "***" + name[-1]
     return f"{masked_name}@{domain}"
 
-# --- KHỞI TẠO KHO LƯU TRỮ TẠM TRONG SESSION ---
+# --- KHỞI TẠO KHO LƯU TRỮ TẠM TRONG HỆ THỐNG ---
 if 'community_db' not in st.session_state:
     st.session_state['community_db'] = [
         {
             "ID": "tuyen.duc@gmail.com_HPG",
             "Thời gian": "2026-10-15 09:30", 
-            "Email Thật (Ngầm định)": "tuyen.duc@gmail.com", 
+            "Email Thật (Quản lý nội bộ)": "tuyen.duc@gmail.com", 
             "Mã CK": "HPG", 
             "Nhóm ngành": "Doanh nghiệp Thường", 
             "Kết quả / Đánh giá": "F-Score: 7/9 | M-Score: -2.15 (An toàn)"
         }
     ]
 
-# --- KẾT NỐI GEMINI AI CLIENT AN TOÀN ---
-has_gemini = False
-ai_client = None
-try:
-    from google import genai
-    gemini_api_key = st.secrets.get("GEMINI_API_KEY", "")
-    if gemini_api_key:
-        ai_client = genai.Client(api_key=gemini_api_key)
-        has_gemini = True
-except Exception:
-    has_gemini = False
-
-# --- XÁC THỰC THÀNH VIÊN BẰNG EMAIL ---
-st.sidebar.title("🔐 Đăng nhập Hệ thống")
-user_email = st.sidebar.text_input("Nhập Gmail của bạn để tiếp tục:")
+# --- THANH ĐĂNG NHẬP (XÁC THỰC EMAIL THẬT) ---
+st.sidebar.title("🔐 Đăng nhập hệ thống")
+user_email = st.sidebar.text_input("Nhập Gmail thật của bạn:").strip().lower()
 
 if not user_email or "@gmail.com" not in user_email:
-    st.warning("⚠️ Vui lòng nhập địa chỉ Gmail hợp lệ ở thanh bên trái để mở khóa ứng dụng.")
+    st.warning("⚠️ Vui lòng nhập Gmail chính chủ ở thanh bên trái để mở khóa ứng dụng.")
     st.stop()
 else:
-    st.sidebar.success(f"Đang đăng nhập: **{mask_email(user_email)}**")
+    # Ứng dụng tự động ẩn danh hóa khi chào mừng để người dùng yên tâm
+    st.sidebar.success(f"Xin chào: **{mask_email(user_email)}**")
     st.sidebar.markdown("---")
     menu = st.sidebar.radio("Chọn phân hệ:", [
-        "📊 Phần 1: Dashboard Vĩ Mô & Market Timing", 
+        "📊 Phần 1: Dashboard Vĩ Mô", 
         "🔍 Phần 2: Chấm điểm BCTC & Lưu kho", 
-        "📚 Phần 3: Kho Dữ liệu Cộng Đồng & Lịch sử cá nhân"
+        "📚 Phần 3: Kho Dữ liệu Cộng Đồng (Ẩn danh)"
     ])
-    
-    if has_gemini:
-        st.sidebar.markdown("---")
-        st.sidebar.subheader("🤖 Trợ lý AI Gemini")
-        ai_prompt = st.sidebar.text_area("Hỏi AI về vĩ mô hoặc cổ phiếu:")
-        if st.sidebar.button("💡 Gửi yêu cầu"):
-            if ai_prompt:
-                with st.spinner("AI đang phân tích..."):
-                    try:
-                        response = ai_client.models.generate_content(
-                            model='gemini-2.5-flash',
-                            contents=f"Dưới góc độ chuyên gia tài chính Việt Nam: {ai_prompt}"
-                        )
-                        st.sidebar.info(response.text)
-                    except Exception as e:
-                        st.sidebar.error(f"Lỗi AI: {e}")
 
 # =====================================================================
-# PHẦN 1: DASHBOARD VĨ MÔ & MARKET TIMING
+# PHẦN 1: DASHBOARD VĨ MÔ & BẢNG KIỂM MARKET TIMING
 # =====================================================================
-if menu == "📊 Phần 1: Dashboard Vĩ Mô & Market Timing":
-    st.title("📊 Phần 1: Dashboard Vĩ Mô & Market Timing")
-    st.markdown("Hệ thống kiểm định dòng tiền vĩ mô dựa trên thông số chủ động.")
+if menu == "📊 Phần 1: Dashboard Vĩ Mô":
+    st.title("📊 Phần 1: Dashboard Vĩ Mô & Bảng Kiểm Market Timing")
+    st.markdown("Nhập các thông số vĩ mô thực tế mới nhất để hệ thống kiểm định dòng tiền.")
     
     with st.expander("⚙️ Tùy chỉnh thông số vĩ mô thực tế", expanded=True):
         c_i1, c_i2, c_i3, c_i4 = st.columns(4)
@@ -205,7 +176,7 @@ elif menu == "🔍 Phần 2: Chấm điểm BCTC & Lưu kho":
     col_res1.metric("Beneish M-Score", f"{m_score:.2f}", "Ngưỡng: -1.78")
     col_res2.metric("Piotroski F-Score", f"{f_score} / 9")
 
-    # Lưu bài viết ngầm định bằng email thật nhưng hiển thị ẩn danh
+    # Lưu bài viết ngầm định bằng email thật nhưng khi lên bảng chung sẽ tự động ẩn danh
     record_id = f"{user_email}_{ticker_symbol}"
     if st.button("💾 Lưu / Cập nhật bài phân tích vào Kho Cộng Đồng", type="primary", use_container_width=True):
         result_text = f"F-Score: {f_score}/9 | M-Score: {m_score:.2f}"
@@ -215,7 +186,7 @@ elif menu == "🔍 Phần 2: Chấm điểm BCTC & Lưu kho":
         new_record = {
             "ID": record_id,
             "Thời gian": datetime.now().strftime("%Y-%m-%d %H:%M"),
-            "Email Thật (Ngầm định)": user_email,
+            "Email Thật (Quản lý nội bộ)": user_email,
             "Mã CK": ticker_symbol,
             "Nhóm ngành": "Doanh nghiệp Thường",
             "Kết quả / Đánh giá": result_text
@@ -229,18 +200,17 @@ elif menu == "🔍 Phần 2: Chấm điểm BCTC & Lưu kho":
             st.success(f"✅ Đã lưu mới bài phân tích mã **{ticker_symbol}** vào Kho cộng đồng!")
 
 # =====================================================================
-# PHẦN 3: KHO DỮ LIỆU CỘNG ĐỒNG & QUẢN LÝ LỊCH SỬ CÁ NHÂN
+# PHẦN 3: KHO DỮ LIỆU CỘNG ĐỒNG (BẢO MẬT ẨN DANH)
 # =====================================================================
-elif menu == "📚 Phần 3: Kho Dữ liệu Cộng Đồng & Lịch sử cá nhân":
+elif menu == "📚 Phần 3: Kho Dữ liệu Cộng Đồng (Ẩn danh)":
     st.title("📚 Kho Lưu trữ & Tra cứu Kết quả Phân tích Cộng Đồng")
-    st.markdown("Nơi lưu giữ toàn bộ báo cáo phân tích tài chính từ các thành viên trong hệ thống (Đã bảo mật ẩn danh).")
+    st.markdown("Nơi lưu giữ toàn bộ báo cáo phân tích tài chính từ các thành viên (Đã tự động bảo mật ẩn danh).")
     
-    # Bảng hiển thị chung (Tự động che email thành dạng ẩn danh)
     df_show = pd.DataFrame(st.session_state['community_db'])
     if not df_show.empty:
         df_display = df_show.copy()
-        # Tạo cột hiển thị ẩn danh dựa trên email thật
-        df_display['Thành viên'] = df_display['Email Thật (Ngầm định)'].apply(mask_email)
+        # Tự động che bớt email để không ai thấy email nguyên bản của nhau
+        df_display['Thành viên'] = df_display['Email Thật (Quản lý nội bộ)'].apply(mask_email)
         df_final = df_display[['Thời gian', 'Thành viên', 'Mã CK', 'Nhóm ngành', 'Kết quả / Đánh giá']]
         st.dataframe(df_final, use_container_width=True)
     else:
@@ -249,8 +219,8 @@ elif menu == "📚 Phần 3: Kho Dữ liệu Cộng Đồng & Lịch sử cá nh
     st.markdown("---")
     st.subheader("🛠️ Quản lý bài phân tích của riêng bạn")
     
-    # Hệ thống ngầm vẫn nhận diện đúng email thật của bạn để lọc bài viết cá nhân
-    my_posts = [item for item in st.session_state['community_db'] if item['Email Thật (Ngầm định)'] == user_email]
+    # Hệ thống ngầm nhận diện đúng email thật của bạn để lọc bài cá nhân
+    my_posts = [item for item in st.session_state['community_db'] if item['Email Thật (Quản lý nội bộ)'] == user_email]
     if my_posts:
         st.write(f"Bạn đang sở hữu **{len(my_posts)}** bài phân tích trong kho bảo mật.")
         selected_my_stock = st.selectbox("Chọn mã cổ phiếu bạn muốn chỉnh sửa lại:", [item['Mã CK'] for item in my_posts])
