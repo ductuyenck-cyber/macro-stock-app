@@ -2,4 +2,6 @@ streamlit
 pandas
 numpy
 plotly
+vnstock
 google-genai
+streamlit-google-auth
