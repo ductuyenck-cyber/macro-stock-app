@@ -23,12 +23,12 @@ def mask_email(email):
         masked_name = name[:2] + "***" + name[-1]
     return f"{masked_name}@{domain}"
 
-# --- HÀM ĐỌC DANH SÁCH THÀNH VIÊN TỪ GOOGLE SHEETS ---
+# --- HÀM ĐỌC DANH SÁCH THÀNH VIÊN TỪ GOOGLE SHEETS CỦA BẠN ---
 @st.cache_data(ttl=30)
 def load_members():
     try:
-        # 💡 THAY LINK DƯỚI BẰNG LINK GOOGLE SHEET CỦA BẠN (đã đổi đuôi thành /gviz/tq?tqx=out:csv)
-        sheet_url = "https://docs.google.com/spreadsheets/d/ID_GOOGLE_SHEET_CUA_BAN/gviz/tq?tqx=out:csv"
+        # Đường dẫn Google Sheet đã được tối ưu hóa sang định dạng CSV để app đọc tự động
+        sheet_url = "https://docs.google.com/spreadsheets/d/1K_lTOPWDKqipNWNRSX2IFtm5YF8oILVsfPrluqhhXI4/gviz/tq?tqx=out:csv"
         df = pd.read_csv(sheet_url)
         return df
     except Exception:
@@ -47,24 +47,29 @@ if 'community_db' not in st.session_state:
         }
     ]
 
-# --- THANH ĐĂNG NHẬP (XÁC THỰC QUA FORM) ---
+# --- THANH ĐĂNG NHẬP (XÁC THỰC QUA GOOGLE SHEETS) ---
 st.sidebar.title("🔐 Đăng nhập hệ thống")
 st.sidebar.markdown("*(Thành viên cần đăng ký qua Google Form trước khi đăng nhập)*")
 user_email = st.sidebar.text_input("Nhập Gmail chính chủ của bạn:").strip().lower()
 
-# Kiểm tra xác thực (Nếu bạn chưa gắn Google Sheet, tạm thời app cho phép mọi Gmail hợp lệ đăng nhập)
 df_members = load_members()
 is_authenticated = False
 
 if user_email and "@gmail.com" in user_email:
-    if not df_members.empty and 'Email' in df_members.columns:
-        registered_emails = df_members['Email'].str.lower().tolist()
-        if user_email in registered_emails:
-            is_authenticated = True
+    if not df_members.empty:
+        # Tìm xem cột nào chứa email trong file Google Sheets của bạn
+        email_col = next((col for col in df_members.columns if 'email' in col.lower()), None)
+        if email_col:
+            registered_emails = df_members[email_col].dropna().astype(str).str.lower().tolist()
+            if user_email in registered_emails:
+                is_authenticated = True
+            else:
+                st.sidebar.error("❌ Email này chưa đăng ký qua Google Form!")
         else:
-            st.sidebar.error("❌ Email này chưa đăng ký qua Google Form!")
+            # Nếu file chưa có dữ liệu hoặc không tìm thấy cột email, tạm thời cho phép truy cập để test
+            is_authenticated = True
     else:
-        # Chế độ chạy thử nghiệm nếu chưa cấu hình link Google Sheet
+        # Nếu chưa kết nối được file, cho phép chạy thử nghiệm
         is_authenticated = True
 
 if not is_authenticated:
