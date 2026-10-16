@@ -2,18 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from datetime import datetime
-import streamlit as st
 import streamlit.components.v1 as components
-
-# --- NHÚNG GOOGLE FORM TRỰC TIẾP TRÊN GIAO DIỆN ---
-st.sidebar.markdown("---")
-with st.sidebar.expander("📝 Chưa có tài khoản? Đăng ký ngay"):
-    st.markdown("Điền thông tin bên dưới để được cấp quyền:")
-    
-    # 💡 THAY LINK EMBED GOOGLE FORM CỦA BẠN VÀO ĐÂY (Link có đuôi ?embedded=true)
-    form_embed_url = "https://docs.google.com/forms/d/e/1FAIpQLSeGyXK_-dnAq4IjHsKaJjKp9O89ziolpuQyvr7sXWCL7fELoA/viewform?embedded=true"    
-    # Nhúng form vào sidebar hoặc màn hình chính
-    components.iframe(form_embed_url, height=450, scrolling=True)
 
 # --- CẤU HÌNH GIAO DIỆN TRANG ---
 st.set_page_config(
@@ -21,6 +10,13 @@ st.set_page_config(
     page_icon="📈",
     layout="wide"
 )
+
+# --- NHÚNG GOOGLE FORM TRỰC TIẾP TRÊN THANH BÊN (SIDEBAR) ---
+st.sidebar.markdown("---")
+with st.sidebar.expander("📝 Chưa có tài khoản? Đăng ký ngay"):
+    st.markdown("Điền thông tin bên dưới để cấp quyền truy cập:")
+    form_embed_url = "https://docs.google.com/forms/d/e/1FAIpQLSeGyXK_-dnAq4IjHsKaJjKp9O89ziolpuQyvr7sXWCL7fELoA/viewform?embedded=true"
+    components.iframe(form_embed_url, height=420, scrolling=True)
 
 # --- HÀM ẨN DANH EMAIL (BẢO MẬT HIỂN THỊ CÔNG KHAI) ---
 def mask_email(email):
@@ -39,7 +35,6 @@ def mask_email(email):
 @st.cache_data(ttl=30)
 def load_members():
     try:
-        # Đường dẫn Google Sheet đã được tối ưu hóa sang định dạng CSV để app đọc tự động
         sheet_url = "https://docs.google.com/spreadsheets/d/1K_lTOPWDKqipNWNRSX2IFtm5YF8oILVsfPrluqhhXI4/gviz/tq?tqx=out:csv"
         df = pd.read_csv(sheet_url)
         return df
@@ -60,8 +55,8 @@ if 'community_db' not in st.session_state:
     ]
 
 # --- THANH ĐĂNG NHẬP (XÁC THỰC QUA GOOGLE SHEETS) ---
+st.sidebar.markdown("---")
 st.sidebar.title("🔐 Đăng nhập hệ thống")
-st.sidebar.markdown("*(Thành viên cần đăng ký qua Google Form trước khi đăng nhập)*")
 user_email = st.sidebar.text_input("Nhập Gmail chính chủ của bạn:").strip().lower()
 
 df_members = load_members()
@@ -69,7 +64,6 @@ is_authenticated = False
 
 if user_email and "@gmail.com" in user_email:
     if not df_members.empty:
-        # Tìm xem cột nào chứa email trong file Google Sheets của bạn
         email_col = next((col for col in df_members.columns if 'email' in col.lower()), None)
         if email_col:
             registered_emails = df_members[email_col].dropna().astype(str).str.lower().tolist()
@@ -78,10 +72,8 @@ if user_email and "@gmail.com" in user_email:
             else:
                 st.sidebar.error("❌ Email này chưa đăng ký qua Google Form!")
         else:
-            # Nếu file chưa có dữ liệu hoặc không tìm thấy cột email, tạm thời cho phép truy cập để test
             is_authenticated = True
     else:
-        # Nếu chưa kết nối được file, cho phép chạy thử nghiệm
         is_authenticated = True
 
 if not is_authenticated:
@@ -97,20 +89,20 @@ else:
     ])
 
 # =====================================================================
-# PHẦN 1: DASHBOARD VĨ MÔ & MARKET TIMING
+# PHẦN 1: DASHBOARD VĨ MÔ & MARKET TIMING (BẢN TRƯỜNG TỒN)
 # =====================================================================
 if menu == "📊 Phần 1: Dashboard Vĩ Mô":
-    st.title("📊 Phần 1: Dashboard Vĩ Mô & Bảng Kiểm Market Timing")
-    st.markdown("Nhập các thông số vĩ mô thực tế mới nhất để hệ thống kiểm định dòng tiền.")
+    st.title("📊 Phần 1: Dashboard Vĩ Mô & Bảng Kiểm Market Timing (Trường tồn)")
+    st.markdown("Đánh giá dựa trên độ lệch pha và xu hướng dòng tiền thực tế qua các năm.")
     
     with st.expander("⚙️ Tùy chỉnh thông số vĩ mô thực tế", expanded=True):
         c_i1, c_i2, c_i3, c_i4 = st.columns(4)
         with c_i1:
-            input_central_rate = st.text_input("Tỷ giá Trung tâm (SBV)", value="24,250 VND")
+            input_central_rate = st.text_input("Tỷ giá Trung tâm (SBV)", value="Biến động theo biên độ")
         with c_i2:
             input_rate_on = st.text_input("Lãi suất ON", value="4.25%")
         with c_i3:
-            input_dxy = st.text_input("Chỉ số DXY", value="103.50")
+            input_dxy = st.text_input("Chỉ số DXY", value="Vùng trung tính")
         with c_i4:
             input_liquidity = st.text_input("Thanh khoản HOSE", value="18,500 Tỷ")
 
@@ -121,22 +113,25 @@ if menu == "📊 Phần 1: Dashboard Vĩ Mô":
     with col4: st.metric("Thanh khoản", input_liquidity)
 
     st.markdown("---")
-    st.subheader("🚦 BẢNG KIỂM VĨ MÔ SỐNG CÒN (MARKET TIMING) 🚦")
+    st.subheader("🚦 BẢNG KIỂM VĨ MÔ SỐNG CÒN (TRƯỜNG TỒN) 🚦")
+    
     col_v1, col_v2 = st.columns(2)
     with col_v1:
-        laisuat = st.selectbox("1. Xu hướng Lãi suất & OMO:", ["Giảm / Nới lỏng (Tốt)", "Đi ngang (Bình thường)", "Tăng / Thắt chặt (Xấu)"])
-        tygia = st.selectbox("2. Tỷ giá USD/VND:", ["Ổn định, dưới 25.000 (Tốt)", "Căng thẳng, vượt 25.000 (Xấu)"])
+        laisuat = st.selectbox("1. Xu hướng Lãi suất & OMO:", ["-- Chọn trạng thái --", "Giảm / Nới lỏng (Tốt)", "Đi ngang (Bình thường)", "Tăng / Thắt chặt (Xấu)"])
+        tygia = st.selectbox("2. Biến động Tỷ giá USD/VND (So với biên độ NHNN):", ["-- Chọn trạng thái --", "Trượt giá chậm, trong biên độ kiểm soát (Tốt)", "Tăng sốc, áp sát trần biên độ / Chợ đen biến động mạnh (Xấu)"])
     with col_v2:
-        dxy = st.selectbox("3. Chỉ số DXY:", ["Dưới 102 (Tốt)", "Từ 102 đến 105 (Bình thường)", "Vượt 105 (Xấu)"])
-        nhnn = st.selectbox("4. Động thái NHNN:", ["Bơm tiền / Mua USD vào (Tốt)", "Không can thiệp (Bình thường)", "Hút Tín phiếu / Bán USD ra (Xấu)"])
+        dxy = st.selectbox("3. Chỉ số Sức mạnh Đồng Đô la (DXY):", ["-- Chọn trạng thái --", "Xu hướng giảm / Dưới trung bình dài hạn (Tốt)", "Đi ngang / Vùng trung tính (Bình thường)", "Bứt phá vượt kháng cự mạnh / Đỉnh dài hạn (Xấu)"])
+        nhnn = st.selectbox("4. Động thái của NHNN:", ["-- Chọn trạng thái --", "Bơm tiền / Mua lại ngoại tệ tăng dự trữ (Tốt)", "Không can thiệp (Bình thường)", "Hút Tín phiếu / Bán ngoại tệ can thiệp mạnh (Xấu)"])
         
     if st.button("🔍 ĐÁNH GIÁ THỊ TRƯỜNG", type="primary", use_container_width=True):
-        if "Xấu" in laisuat or "Xấu" in tygia or "Vượt 105" in dxy or "Hút Tín phiếu" in nhnn:
-            st.error("### 🔴 ĐÈN ĐỎ (Defense / Retreat)\n**Hành động:** PHÒNG THỦ TUYỆT ĐỐI. Giữ tỷ lệ tiền mặt 80-100%.")
-        elif "Giảm" in laisuat and "Ổn định" in tygia and "Dưới 102" in dxy and "Bơm tiền" in nhnn:
-            st.success("### 🟢 ĐÈN XANH (All-in / Attack)\n**Hành động:** TẤN CÔNG TỔNG LỰC. Full tài khoản, dùng Margin tối đa.")
+        if "-- Chọn trạng thái --" in [laisuat, tygia, dxy, nhnn]:
+            st.warning("⚠️ Vui lòng chọn đầy đủ 4 thông số vĩ mô trước khi đánh giá!")
+        elif "Xấu" in laisuat or "Xấu" in tygia or "Xấu" in dxy or "Hút Tín phiếu" in nhnn:
+            st.error("### 🔴 ĐÈN ĐỎ (Defense / Retreat)\n**Cảnh báo rủi ro vĩ mô!**\n\n**Hành động:** PHÒNG THỦ TUYỆT ĐỐI. Bán hết cổ phiếu đầu cơ. Đưa tỷ lệ tiền mặt về mức an toàn cao. Tuyệt đối không bắt đáy.")
+        elif "Giảm" in laisuat and "Trượt giá chậm" in tygia and "Xu hướng giảm" in dxy and "Bơm tiền" in nhnn:
+            st.success("### 🟢 ĐÈN XANH (All-in / Attack)\n**Vĩ mô ủng hộ tuyệt đối!**\n\n**Hành động:** TẤN CÔNG TỔNG LỰC. Đánh tài sản lớn, tận dụng tối đa chu kỳ nới lỏng tiền tệ.")
         else:
-            st.warning("### 🟡 ĐÈN VÀNG (Guerrilla / Hit & Run)\n**Hành động:** ĐÁNH DU KÍCH. Tỷ trọng 30-50% tiền mặt, đánh ngắn T+.")
+            st.warning("### 🟡 ĐÈN VÀNG (Guerrilla / Hit & Run)\n**Vĩ mô hỗn hợp, biến động biên độ.**\n\n**Hành động:** ĐÁNH DU KÍCH. Tỷ trọng linh hoạt, đánh ngắn T+, quản trị rủi ro chặt chẽ.")
 
 # =====================================================================
 # PHẦN 2: CHẤM ĐIỂM BCTC & LƯU KHO
