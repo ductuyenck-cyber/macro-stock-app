@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 from datetime import datetime
 
 # --- CẤU HÌNH GIAO DIỆN TRANG ---
@@ -9,7 +10,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- HÀM ẨN DANH EMAIL (GIÚP BẢO MẬT KHÔNG LỘ EMAIL TRÊN WEB) ---
+# --- HÀM ẨN DANH EMAIL (BẢO MẬT HIỂN THỊ CÔNG KHAI) ---
 def mask_email(email):
     if not email or "@" not in email:
         return "Ẩn danh"
@@ -21,6 +22,17 @@ def mask_email(email):
     else:
         masked_name = name[:2] + "***" + name[-1]
     return f"{masked_name}@{domain}"
+
+# --- HÀM ĐỌC DANH SÁCH THÀNH VIÊN TỪ GOOGLE SHEETS ---
+@st.cache_data(ttl=30)
+def load_members():
+    try:
+        # 💡 THAY LINK DƯỚI BẰNG LINK GOOGLE SHEET CỦA BẠN (đã đổi đuôi thành /gviz/tq?tqx=out:csv)
+        sheet_url = "https://docs.google.com/spreadsheets/d/ID_GOOGLE_SHEET_CUA_BAN/gviz/tq?tqx=out:csv"
+        df = pd.read_csv(sheet_url)
+        return df
+    except Exception:
+        return pd.DataFrame()
 
 # --- KHỞI TẠO KHO LƯU TRỮ TẠM TRONG HỆ THỐNG ---
 if 'community_db' not in st.session_state:
@@ -35,15 +47,30 @@ if 'community_db' not in st.session_state:
         }
     ]
 
-# --- THANH ĐĂNG NHẬP (XÁC THỰC EMAIL THẬT) ---
+# --- THANH ĐĂNG NHẬP (XÁC THỰC QUA FORM) ---
 st.sidebar.title("🔐 Đăng nhập hệ thống")
-user_email = st.sidebar.text_input("Nhập Gmail thật của bạn:").strip().lower()
+st.sidebar.markdown("*(Thành viên cần đăng ký qua Google Form trước khi đăng nhập)*")
+user_email = st.sidebar.text_input("Nhập Gmail chính chủ của bạn:").strip().lower()
 
-if not user_email or "@gmail.com" not in user_email:
-    st.warning("⚠️ Vui lòng nhập Gmail chính chủ ở thanh bên trái để mở khóa ứng dụng.")
+# Kiểm tra xác thực (Nếu bạn chưa gắn Google Sheet, tạm thời app cho phép mọi Gmail hợp lệ đăng nhập)
+df_members = load_members()
+is_authenticated = False
+
+if user_email and "@gmail.com" in user_email:
+    if not df_members.empty and 'Email' in df_members.columns:
+        registered_emails = df_members['Email'].str.lower().tolist()
+        if user_email in registered_emails:
+            is_authenticated = True
+        else:
+            st.sidebar.error("❌ Email này chưa đăng ký qua Google Form!")
+    else:
+        # Chế độ chạy thử nghiệm nếu chưa cấu hình link Google Sheet
+        is_authenticated = True
+
+if not is_authenticated:
+    st.warning("⚠️ Vui lòng nhập Gmail chính chủ đã đăng ký ở thanh bên trái để mở khóa ứng dụng.")
     st.stop()
 else:
-    # Ứng dụng tự động ẩn danh hóa khi chào mừng để người dùng yên tâm
     st.sidebar.success(f"Xin chào: **{mask_email(user_email)}**")
     st.sidebar.markdown("---")
     menu = st.sidebar.radio("Chọn phân hệ:", [
@@ -53,7 +80,7 @@ else:
     ])
 
 # =====================================================================
-# PHẦN 1: DASHBOARD VĨ MÔ & BẢNG KIỂM MARKET TIMING
+# PHẦN 1: DASHBOARD VĨ MÔ & MARKET TIMING
 # =====================================================================
 if menu == "📊 Phần 1: Dashboard Vĩ Mô":
     st.title("📊 Phần 1: Dashboard Vĩ Mô & Bảng Kiểm Market Timing")
@@ -176,7 +203,7 @@ elif menu == "🔍 Phần 2: Chấm điểm BCTC & Lưu kho":
     col_res1.metric("Beneish M-Score", f"{m_score:.2f}", "Ngưỡng: -1.78")
     col_res2.metric("Piotroski F-Score", f"{f_score} / 9")
 
-    # Lưu bài viết ngầm định bằng email thật nhưng khi lên bảng chung sẽ tự động ẩn danh
+    # Lưu bài viết (Tự động cập nhật nếu trùng Email + Mã CK)
     record_id = f"{user_email}_{ticker_symbol}"
     if st.button("💾 Lưu / Cập nhật bài phân tích vào Kho Cộng Đồng", type="primary", use_container_width=True):
         result_text = f"F-Score: {f_score}/9 | M-Score: {m_score:.2f}"
@@ -209,7 +236,6 @@ elif menu == "📚 Phần 3: Kho Dữ liệu Cộng Đồng (Ẩn danh)":
     df_show = pd.DataFrame(st.session_state['community_db'])
     if not df_show.empty:
         df_display = df_show.copy()
-        # Tự động che bớt email để không ai thấy email nguyên bản của nhau
         df_display['Thành viên'] = df_display['Email Thật (Quản lý nội bộ)'].apply(mask_email)
         df_final = df_display[['Thời gian', 'Thành viên', 'Mã CK', 'Nhóm ngành', 'Kết quả / Đánh giá']]
         st.dataframe(df_final, use_container_width=True)
@@ -219,7 +245,6 @@ elif menu == "📚 Phần 3: Kho Dữ liệu Cộng Đồng (Ẩn danh)":
     st.markdown("---")
     st.subheader("🛠️ Quản lý bài phân tích của riêng bạn")
     
-    # Hệ thống ngầm nhận diện đúng email thật của bạn để lọc bài cá nhân
     my_posts = [item for item in st.session_state['community_db'] if item['Email Thật (Quản lý nội bộ)'] == user_email]
     if my_posts:
         st.write(f"Bạn đang sở hữu **{len(my_posts)}** bài phân tích trong kho bảo mật.")
