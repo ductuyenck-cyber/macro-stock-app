@@ -11,13 +11,26 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- KHỞI TẠO KHO LƯU TRỮ TẠM TRONG SESSION (LỊCH SỬ KHO DỮ LIỆU) ---
+# --- HÀM ẨN DANH EMAIL (GIỮ BẢO MẬT) ---
+def mask_email(email):
+    if not email or "@" not in email:
+        return "Ẩn danh"
+    parts = email.split("@")
+    name = parts[0]
+    domain = parts[1]
+    if len(name) <= 3:
+        masked_name = name[0] + "***"
+    else:
+        masked_name = name[:2] + "***" + name[-1]
+    return f"{masked_name}@{domain}"
+
+# --- KHỞI TẠO KHO LƯU TRỮ TẠM TRONG SESSION ---
 if 'community_db' not in st.session_state:
     st.session_state['community_db'] = [
         {
-            "ID": "tuyen@gmail.com_HPG",
+            "ID": "tuyen.duc@gmail.com_HPG",
             "Thời gian": "2026-10-15 09:30", 
-            "Email Thành viên": "tuyen@gmail.com", 
+            "Email Thật (Ngầm định)": "tuyen.duc@gmail.com", 
             "Mã CK": "HPG", 
             "Nhóm ngành": "Doanh nghiệp Thường", 
             "Kết quả / Đánh giá": "F-Score: 7/9 | M-Score: -2.15 (An toàn)"
@@ -36,7 +49,7 @@ try:
 except Exception:
     has_gemini = False
 
-# --- XÁC THỰC THÀNH VIÊN BẰNG EMAIL CHÍNH THỨC ---
+# --- XÁC THỰC THÀNH VIÊN BẰNG EMAIL ---
 st.sidebar.title("🔐 Đăng nhập Hệ thống")
 user_email = st.sidebar.text_input("Nhập Gmail của bạn để tiếp tục:")
 
@@ -44,7 +57,7 @@ if not user_email or "@gmail.com" not in user_email:
     st.warning("⚠️ Vui lòng nhập địa chỉ Gmail hợp lệ ở thanh bên trái để mở khóa ứng dụng.")
     st.stop()
 else:
-    st.sidebar.success(f"Xin chào: **{user_email}**")
+    st.sidebar.success(f"Đang đăng nhập: **{mask_email(user_email)}**")
     st.sidebar.markdown("---")
     menu = st.sidebar.radio("Chọn phân hệ:", [
         "📊 Phần 1: Dashboard Vĩ Mô & Market Timing", 
@@ -115,7 +128,7 @@ if menu == "📊 Phần 1: Dashboard Vĩ Mô & Market Timing":
 # =====================================================================
 elif menu == "🔍 Phần 2: Chấm điểm BCTC & Lưu kho":
     st.title("🔍 Chấm Điểm BCTC Chuẩn Gốc (F-Score & M-Score)")
-    st.markdown(f"Thành viên thực hiện phân tích: **{user_email}**")
+    st.markdown(f"Thành viên thực hiện phân tích: **{mask_email(user_email)}** (Bảo mật danh tính)")
     
     ticker_symbol = st.text_input("Mã Cổ Phiếu / Doanh Nghiệp (VD: HPG, VNM):", "HPG").upper()
     
@@ -192,7 +205,7 @@ elif menu == "🔍 Phần 2: Chấm điểm BCTC & Lưu kho":
     col_res1.metric("Beneish M-Score", f"{m_score:.2f}", "Ngưỡng: -1.78")
     col_res2.metric("Piotroski F-Score", f"{f_score} / 9")
 
-    # Lưu bài viết (Tự động cập nhật nếu trùng Email + Mã CK)
+    # Lưu bài viết ngầm định bằng email thật nhưng hiển thị ẩn danh
     record_id = f"{user_email}_{ticker_symbol}"
     if st.button("💾 Lưu / Cập nhật bài phân tích vào Kho Cộng Đồng", type="primary", use_container_width=True):
         result_text = f"F-Score: {f_score}/9 | M-Score: {m_score:.2f}"
@@ -202,7 +215,7 @@ elif menu == "🔍 Phần 2: Chấm điểm BCTC & Lưu kho":
         new_record = {
             "ID": record_id,
             "Thời gian": datetime.now().strftime("%Y-%m-%d %H:%M"),
-            "Email Thành viên": user_email,
+            "Email Thật (Ngầm định)": user_email,
             "Mã CK": ticker_symbol,
             "Nhóm ngành": "Doanh nghiệp Thường",
             "Kết quả / Đánh giá": result_text
@@ -220,26 +233,29 @@ elif menu == "🔍 Phần 2: Chấm điểm BCTC & Lưu kho":
 # =====================================================================
 elif menu == "📚 Phần 3: Kho Dữ liệu Cộng Đồng & Lịch sử cá nhân":
     st.title("📚 Kho Lưu trữ & Tra cứu Kết quả Phân tích Cộng Đồng")
-    st.markdown("Nơi lưu giữ toàn bộ báo cáo phân tích tài chính từ các thành viên trong hệ thống.")
+    st.markdown("Nơi lưu giữ toàn bộ báo cáo phân tích tài chính từ các thành viên trong hệ thống (Đã bảo mật ẩn danh).")
     
-    # Bảng tổng hợp toàn bộ kho
+    # Bảng hiển thị chung (Tự động che email thành dạng ẩn danh)
     df_show = pd.DataFrame(st.session_state['community_db'])
     if not df_show.empty:
-        df_display = df_show[['Thời gian', 'Email Thành viên', 'Mã CK', 'Nhóm ngành', 'Kết quả / Đánh giá']]
-        st.dataframe(df_display, use_container_width=True)
+        df_display = df_show.copy()
+        # Tạo cột hiển thị ẩn danh dựa trên email thật
+        df_display['Thành viên'] = df_display['Email Thật (Ngầm định)'].apply(mask_email)
+        df_final = df_display[['Thời gian', 'Thành viên', 'Mã CK', 'Nhóm ngành', 'Kết quả / Đánh giá']]
+        st.dataframe(df_final, use_container_width=True)
     else:
         st.info("Chưa có dữ liệu trong kho.")
         
     st.markdown("---")
     st.subheader("🛠️ Quản lý bài phân tích của riêng bạn")
     
-    # Lọc các bài của đúng email đang đăng nhập
-    my_posts = [item for item in st.session_state['community_db'] if item['Email Thành viên'] == user_email]
+    # Hệ thống ngầm vẫn nhận diện đúng email thật của bạn để lọc bài viết cá nhân
+    my_posts = [item for item in st.session_state['community_db'] if item['Email Thật (Ngầm định)'] == user_email]
     if my_posts:
-        st.write(f"Bạn đang sở hữu **{len(my_posts)}** bài phân tích trong kho.")
+        st.write(f"Bạn đang sở hữu **{len(my_posts)}** bài phân tích trong kho bảo mật.")
         selected_my_stock = st.selectbox("Chọn mã cổ phiếu bạn muốn chỉnh sửa lại:", [item['Mã CK'] for item in my_posts])
         
         if st.button("✏️ Nạp lại dữ liệu để sửa bài"):
-            st.success(f"✅ Đã xác nhận quyền sở hữu mã **{selected_my_stock}**! Hãy chuyển sang **Phần 2: Chấm điểm BCTC** để thay đổi thông số và bấm 'Lưu / Cập nhật' để ghi đè phiên bản mới nhất.")
+            st.success(f"✅ Đã xác nhận quyền sở hữu mã **{selected_my_stock}**! Hãy chuyển sang **Phần 2: Chấm điểm BCTC** để thay đổi thông số và bấm 'Lưu / Cập nhật' để ghi đè.")
     else:
         st.info("Bạn chưa có bài phân tích nào được lưu trong hệ thống với email này.")
