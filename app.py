@@ -48,9 +48,19 @@ if 'community_db' not in st.session_state:
             "ID": "tuyen.duc@gmail.com_HPG",
             "Thời gian": "2026-10-15 09:30", 
             "Email Thật (Quản lý nội bộ)": "tuyen.duc@gmail.com", 
-            "Mã CK": "HPG", 
+            "Loại": "Phân tích BCTC",
+            "Mã CK / Nội dung": "HPG", 
             "Nhóm ngành": "Doanh nghiệp Thường", 
             "Kết quả / Đánh giá": "F-Score: 7/9 | M-Score: -2.15 (An toàn)"
+        },
+        {
+            "ID": "tuyen.duc@gmail.com_MACRO",
+            "Thời gian": "2026-10-15 10:00", 
+            "Email Thật (Quản lý nội bộ)": "tuyen.duc@gmail.com", 
+            "Loại": "Nhận định Vĩ mô",
+            "Mã CK / Nội dung": "VĨ MÔ TOÀN CẢNH", 
+            "Nhóm ngành": "Market Timing", 
+            "Kết quả / Đánh giá": "🟡 ĐÈN VÀNG (Guerrilla / Hit & Run)"
         }
     ]
 
@@ -83,37 +93,17 @@ else:
     st.sidebar.success(f"Xin chào: **{mask_email(user_email)}**")
     st.sidebar.markdown("---")
     menu = st.sidebar.radio("Chọn phân hệ:", [
-        "📊 Phần 1: Dashboard Vĩ Mô", 
-        "🔍 Phần 2: Chấm điểm BCTC & Lưu kho", 
+        "📊 Phần 1: Dashboard Vĩ Mô & Market Timing", 
+        "🔍 Phần 2: Chấm điểm BCTC (F-Score & M-Score)", 
         "📚 Phần 3: Kho Dữ liệu Cộng Đồng (Ẩn danh)"
     ])
 
 # =====================================================================
-# PHẦN 1: DASHBOARD VĨ MÔ & MARKET TIMING (BẢN TRƯỜNG TỒN)
+# PHẦN 1: DASHBOARD VĨ MÔ & MARKET TIMING (BẢN TRƯỜNG TỒN + LƯU KHO)
 # =====================================================================
-if menu == "📊 Phần 1: Dashboard Vĩ Mô":
+if menu == "📊 Phần 1: Dashboard Vĩ Mô & Market Timing":
     st.title("📊 Phần 1: Dashboard Vĩ Mô & Bảng Kiểm Market Timing (Trường tồn)")
     st.markdown("Đánh giá dựa trên độ lệch pha và xu hướng dòng tiền thực tế qua các năm.")
-    
-    with st.expander("⚙️ Tùy chỉnh thông số vĩ mô thực tế", expanded=True):
-        c_i1, c_i2, c_i3, c_i4 = st.columns(4)
-        with c_i1:
-            input_central_rate = st.text_input("Tỷ giá Trung tâm (SBV)", value="Biến động theo biên độ")
-        with c_i2:
-            input_rate_on = st.text_input("Lãi suất ON", value="4.25%")
-        with c_i3:
-            input_dxy = st.text_input("Chỉ số DXY", value="Vùng trung tính")
-        with c_i4:
-            input_liquidity = st.text_input("Thanh khoản HOSE", value="18,500 Tỷ")
-
-    col1, col2, col3, col4 = st.columns(4)
-    with col1: st.metric("Tỷ giá SBV", input_central_rate)
-    with col2: st.metric("Lãi suất ON", input_rate_on)
-    with col3: st.metric("Chỉ số DXY", input_dxy)
-    with col4: st.metric("Thanh khoản", input_liquidity)
-
-    st.markdown("---")
-    st.subheader("🚦 BẢNG KIỂM VĨ MÔ SỐNG CÒN (TRƯỜNG TỒN) 🚦")
     
     col_v1, col_v2 = st.columns(2)
     with col_v1:
@@ -126,17 +116,45 @@ if menu == "📊 Phần 1: Dashboard Vĩ Mô":
     if st.button("🔍 ĐÁNH GIÁ THỊ TRƯỜNG", type="primary", use_container_width=True):
         if "-- Chọn trạng thái --" in [laisuat, tygia, dxy, nhnn]:
             st.warning("⚠️ Vui lòng chọn đầy đủ 4 thông số vĩ mô trước khi đánh giá!")
-        elif "Xấu" in laisuat or "Xấu" in tygia or "Xấu" in dxy or "Hút Tín phiếu" in nhnn:
-            st.error("### 🔴 ĐÈN ĐỎ (Defense / Retreat)\n**Cảnh báo rủi ro vĩ mô!**\n\n**Hành động:** PHÒNG THỦ TUYỆT ĐỐI. Bán hết cổ phiếu đầu cơ. Đưa tỷ lệ tiền mặt về mức an toàn cao. Tuyệt đối không bắt đáy.")
-        elif "Giảm" in laisuat and "Trượt giá chậm" in tygia and "Xu hướng giảm" in dxy and "Bơm tiền" in nhnn:
-            st.success("### 🟢 ĐÈN XANH (All-in / Attack)\n**Vĩ mô ủng hộ tuyệt đối!**\n\n**Hành động:** TẤN CÔNG TỔNG LỰC. Đánh tài sản lớn, tận dụng tối đa chu kỳ nới lỏng tiền tệ.")
         else:
-            st.warning("### 🟡 ĐÈN VÀNG (Guerrilla / Hit & Run)\n**Vĩ mô hỗn hợp, biến động biên độ.**\n\n**Hành động:** ĐÁNH DU KÍCH. Tỷ trọng linh hoạt, đánh ngắn T+, quản trị rủi ro chặt chẽ.")
+            if "Xấu" in laisuat or "Xấu" in tygia or "Xấu" in dxy or "Hút Tín phiếu" in nhnn:
+                st.session_state['macro_result'] = "🔴 ĐÈN ĐỎ (Defense / Retreat)"
+                st.error(f"### {st.session_state['macro_result']}\n**Cảnh báo rủi ro vĩ mô!**\n\n**Hành động:** PHÒNG THỦ TUYỆT ĐỐI. Bán hết cổ phiếu đầu cơ. Đưa tỷ lệ tiền mặt về mức an toàn cao. Tuyệt đối không bắt đáy.")
+            elif "Giảm" in laisuat and "Trượt giá chậm" in tygia and "Xu hướng giảm" in dxy and "Bơm tiền" in nhnn:
+                st.session_state['macro_result'] = "🟢 ĐÈN XANH (All-in / Attack)"
+                st.success(f"### {st.session_state['macro_result']}\n**Vĩ mô ủng hộ tuyệt đối!**\n\n**Hành động:** TẤN CÔNG TỔNG LỰC. Đánh tài sản lớn, tận dụng tối đa chu kỳ nới lỏng tiền tệ.")
+            else:
+                st.session_state['macro_result'] = "🟡 ĐÈN VÀNG (Guerrilla / Hit & Run)"
+                st.warning(f"### {st.session_state['macro_result']}\n**Vĩ mô hỗn hợp, biến động biên độ.**\n\n**Hành động:** ĐÁNH DU KÍCH. Tỷ trọng linh hoạt, đánh ngắn T+, quản trị rủi ro chặt chẽ.")
+
+    # Nút lưu kết quả kiểm vĩ mô vào kho cộng đồng
+    if 'macro_result' in st.session_state:
+        st.markdown("---")
+        if st.button("💾 Lưu / Cập nhật kết quả kiểm Vĩ mô vào Kho Cộng Đồng", type="secondary", use_container_width=True):
+            macro_record_id = f"{user_email}_MACRO"
+            existing_macro_idx = next((i for i, item in enumerate(st.session_state['community_db']) if item['ID'] == macro_record_id), None)
+            
+            macro_record = {
+                "ID": macro_record_id,
+                "Thời gian": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "Email Thật (Quản lý nội bộ)": user_email,
+                "Loại": "Nhận định Vĩ mô",
+                "Mã CK / Nội dung": "VĨ MÔ TOÀN CẢNH", 
+                "Nhóm ngành": "Market Timing", 
+                "Kết quả / Đánh giá": st.session_state['macro_result']
+            }
+            
+            if existing_macro_idx is not None:
+                st.session_state['community_db'][existing_macro_idx] = macro_record
+                st.success("✅ Đã cập nhật (Sửa) kết quả nhận định vĩ mô vào kho cộng đồng thành công!")
+            else:
+                st.session_state['community_db'].insert(0, macro_record)
+                st.success("✅ Đã lưu mới kết quả nhận định vĩ mô vào kho cộng đồng thành công!")
 
 # =====================================================================
-# PHẦN 2: CHẤM ĐIỂM BCTC & LƯU KHO
+# PHẦN 2: CHẤM ĐIỂM BCTC (F-SCORE & M-SCORE) & LƯU KHO
 # =====================================================================
-elif menu == "🔍 Phần 2: Chấm điểm BCTC & Lưu kho":
+elif menu == "🔍 Phần 2: Chấm điểm BCTC (F-Score & M-Score)":
     st.title("🔍 Chấm Điểm BCTC Chuẩn Gốc (F-Score & M-Score)")
     st.markdown(f"Thành viên thực hiện phân tích: **{mask_email(user_email)}** (Bảo mật danh tính)")
     
@@ -215,9 +233,9 @@ elif menu == "🔍 Phần 2: Chấm điểm BCTC & Lưu kho":
     col_res1.metric("Beneish M-Score", f"{m_score:.2f}", "Ngưỡng: -1.78")
     col_res2.metric("Piotroski F-Score", f"{f_score} / 9")
 
-    # Lưu bài viết (Tự động cập nhật nếu trùng Email + Mã CK)
+    # Lưu bài viết BCTC (Tự động cập nhật nếu trùng Email + Mã CK)
     record_id = f"{user_email}_{ticker_symbol}"
-    if st.button("💾 Lưu / Cập nhật bài phân tích vào Kho Cộng Đồng", type="primary", use_container_width=True):
+    if st.button("💾 Lưu / Cập nhật bài phân tích BCTC vào Kho Cộng Đồng", type="primary", use_container_width=True):
         result_text = f"F-Score: {f_score}/9 | M-Score: {m_score:.2f}"
         
         existing_idx = next((i for i, item in enumerate(st.session_state['community_db']) if item['ID'] == record_id), None)
@@ -226,7 +244,8 @@ elif menu == "🔍 Phần 2: Chấm điểm BCTC & Lưu kho":
             "ID": record_id,
             "Thời gian": datetime.now().strftime("%Y-%m-%d %H:%M"),
             "Email Thật (Quản lý nội bộ)": user_email,
-            "Mã CK": ticker_symbol,
+            "Loại": "Phân tích BCTC",
+            "Mã CK / Nội dung": ticker_symbol,
             "Nhóm ngành": "Doanh nghiệp Thường",
             "Kết quả / Đánh giá": result_text
         }
@@ -243,26 +262,27 @@ elif menu == "🔍 Phần 2: Chấm điểm BCTC & Lưu kho":
 # =====================================================================
 elif menu == "📚 Phần 3: Kho Dữ liệu Cộng Đồng (Ẩn danh)":
     st.title("📚 Kho Lưu trữ & Tra cứu Kết quả Phân tích Cộng Đồng")
-    st.markdown("Nơi lưu giữ toàn bộ báo cáo phân tích tài chính từ các thành viên (Đã tự động bảo mật ẩn danh).")
+    st.markdown("Nơi lưu giữ toàn bộ báo cáo phân tích BCTC và nhận định vĩ mô từ các thành viên (Đã tự động bảo mật ẩn danh).")
     
     df_show = pd.DataFrame(st.session_state['community_db'])
     if not df_show.empty:
         df_display = df_show.copy()
         df_display['Thành viên'] = df_display['Email Thật (Quản lý nội bộ)'].apply(mask_email)
-        df_final = df_display[['Thời gian', 'Thành viên', 'Mã CK', 'Nhóm ngành', 'Kết quả / Đánh giá']]
+        df_final = df_display[['Thời gian', 'Thành viên', 'Loại', 'Mã CK / Nội dung', 'Nhóm ngành', 'Kết quả / Đánh giá']]
         st.dataframe(df_final, use_container_width=True)
     else:
         st.info("Chưa có dữ liệu trong kho.")
         
     st.markdown("---")
-    st.subheader("🛠️ Quản lý bài phân tích của riêng bạn")
+    st.subheader("🛠️ Quản lý bài đóng góp của riêng bạn")
     
     my_posts = [item for item in st.session_state['community_db'] if item['Email Thật (Quản lý nội bộ)'] == user_email]
     if my_posts:
-        st.write(f"Bạn đang sở hữu **{len(my_posts)}** bài phân tích trong kho bảo mật.")
-        selected_my_stock = st.selectbox("Chọn mã cổ phiếu bạn muốn chỉnh sửa lại:", [item['Mã CK'] for item in my_posts])
+        st.write(f"Bạn đang sở hữu **{len(my_posts)}** bản ghi đóng góp trong kho bảo mật.")
+        stock_options = [item['Mã CK / Nội dung'] for item in my_posts]
+        selected_my_item = st.selectbox("Chọn nội dung bạn muốn chỉnh sửa lại:", stock_options)
         
         if st.button("✏️ Nạp lại dữ liệu để sửa bài"):
-            st.success(f"✅ Đã xác nhận quyền sở hữu mã **{selected_my_stock}**! Hãy chuyển sang **Phần 2: Chấm điểm BCTC** để thay đổi thông số và bấm 'Lưu / Cập nhật' để ghi đè.")
+            st.success(f"✅ Đã xác nhận quyền sở hữu mục **{selected_my_item}**! Hãy chuyển sang **Phân hệ tương ứng** để thay đổi thông số và bấm 'Lưu / Cập nhật' để ghi đè.")
     else:
-        st.info("Bạn chưa có bài phân tích nào được lưu trong hệ thống với email này.")
+        st.info("Bạn chưa có bài phân tích hoặc nhận định nào được lưu trong hệ thống với email này.")
