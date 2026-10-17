@@ -1,4 +1,4 @@
-# StockAI Độc lập 1.1 — all application code in one file.
+# StockAI Độc lập 1.2 — all application code in one file.
 from datetime import datetime
 from pathlib import Path
 from copy import deepcopy
@@ -423,7 +423,228 @@ def financial_import(content,kind):
  finally:wb.close()
 
 
+# User-supplied bank rules, revised to expose missing data and model limitations.
+import html
+import json
+DASHBOARD_MODEL='bank-custom-1.0-adjusted'
+
+def bank_dashboard_model(data):
+ base=financial_calculate(data)
+ out={'model_version':DASHBOARD_MODEL,'errors':base['errors'],'health_rows':[],'risk_rows':[], 'health_score':None,'known_health':0,'risk_score':None,'risk_raw':None,'metrics':[]}
+ if base['errors']:return out
+ rows={r['Chỉ tiêu']:r for r in base['rows']};p=data['periods']
+ def m(name,y='t'):
+  row=rows[name];v=row[y]
+  if v is None:raise ValueError(row['Thiếu / Không xác định'] or 'Chưa đủ dữ liệu: '+name)
+  return v
+ def get(k,y='t'):
+  v=p[y][k]
+  if v is None:raise ValueError('Thiếu '+BANK_FIELDS[k][0]+f' ({y})')
+  return v
+ def ratio(a,b,label):
+  if b<=0:raise ValueError(label+': mẫu số không dương')
+  return a/b
+ def nim(y):
+  # Only use published NIM if BOTH years are provided, never mix methodologies.
+  if p['t']['nim_reported'] is not None and p['t1']['nim_reported'] is not None:return get('nim_reported',y)/100
+  return m('NIM tính bình quân hai mốc',y)
+ nim_basis='NIM công bố hai năm' if all(p[y]['nim_reported'] is not None for y in ['t','t1']) else 'NIM tính từ TS sinh lãi bình quân hai mốc'
+ criteria=[
+  ('LNST năm t dương',lambda:(get('net_income'),0),lambda a,b:a>b,'LNST > 0'),
+  ('ROA năm t > 1%',lambda:(m('ROA'),.01),lambda a,b:a>b,'ROA = LNST / TS bình quân; ngưỡng nội bộ 1%'),
+  ('ROA cải thiện',lambda:(m('ROA'),m('ROA','t1')),lambda a,b:a>b,'ROA t > t−1; cần tài sản cuối t−2'),
+  ('ROE năm t > 12%',lambda:(m('ROE'),.12),lambda a,b:a>b,'ROE = LNST / vốn chủ bình quân; ngưỡng nội bộ 12%'),
+  ('Vốn chủ / tài sản > 10%',lambda:(ratio(get('equity'),get('assets'),'Tài sản'),.10),lambda a,b:a>b,'Chỉ là tỷ lệ kế toán, không phải CAR hoặc ngưỡng pháp lý'),
+  ('Nợ xấu / cho vay < 2%',lambda:(m('NPL cho vay khách hàng'),.02),lambda a,b:a<b,'NPL nhóm 3–5 / cho vay khách hàng gộp'),
+  ('Bao phủ nợ xấu ≥ 100%',lambda:(m('Bao phủ nợ xấu (LLR)'),1.),lambda a,b:a>=b,'Dự phòng cho vay / nợ xấu; NPL = 0 thì chưa xác định tỷ lệ'),
+  ('Cho vay / tiền gửi trong 70–85%',lambda:(m('Cho vay / tiền gửi khách hàng'),None),lambda a,b:.70<=a<=.85,'Khoảng quy ước từ mẫu người dùng; KHÔNG phải LDR pháp lý'),
+  ('NIM ổn định hoặc tăng',lambda:(nim('t'),nim('t1')),lambda a,b:a>=b,nim_basis)]
+ for name,fn,compare,rule in criteria:
+  try:
+   current,reference=fn();passed=bool(compare(current,reference))
+   row={'Tiêu chí':name,'Đạt':passed,'Điểm':int(passed),'Giá trị':current,'Đối chiếu':reference,'Quy tắc / Lý do':rule}
+  except ValueError as exc:row={'Tiêu chí':name,'Đạt':None,'Điểm':None,'Giá trị':None,'Đối chiếu':None,'Quy tắc / Lý do':str(exc)}
+  out['health_rows'].append(row)
+ out['known_health']=sum(r['Điểm'] is not None for r in out['health_rows'])
+ if out['known_health']==9:out['health_score']=sum(r['Điểm'] for r in out['health_rows'])
+ def npl_growth():return ratio(get('npl')-get('npl','t1'),get('npl','t1'),'Nợ xấu năm gốc')
+ components=[
+  ('NPL / cho vay × 30',lambda:m('NPL cho vay khách hàng')*30),
+  ('Phần tăng nợ xấu dương × 15',lambda:max(0,npl_growth())*15),
+  ('Phần cho vay/tiền gửi vượt 85% × 20',lambda:max(0,m('Cho vay / tiền gửi khách hàng')-.85)*20),
+  ('Thiếu bao phủ so với 100% × 15',lambda:max(0,1-min(m('Bao phủ nợ xấu (LLR)'),1.5))*15),
+  ('Phần CIR vượt 40% × 20',lambda:max(0,m('CIR')-.40)*20)]
+ for name,fn in components:
+  try:
+   v=fn()
+   if not math.isfinite(v):raise ValueError('Giá trị vượt phạm vi số')
+   row={'Thành phần':name,'Đóng góp':v,'Lý do':''}
+  except ValueError as exc:row={'Thành phần':name,'Đóng góp':None,'Lý do':str(exc)}
+  out['risk_rows'].append(row)
+ if all(r['Đóng góp'] is not None for r in out['risk_rows']):
+  out['risk_raw']=sum(r['Đóng góp'] for r in out['risk_rows']);out['risk_score']=min(10.,max(0.,out['risk_raw']))
+ for name in ['NPL cho vay khách hàng','Cho vay / tiền gửi khách hàng','Bao phủ nợ xấu (LLR)','CIR']:
+  out['metrics'].append({'Biến số':name,'Giá trị':rows[name]['t'],'Đơn vị':'%'})
+ try:leverage=ratio(get('assets'),get('equity'),'Vốn chủ')
+ except ValueError:leverage=None
+ out['metrics'].append({'Biến số':'Tài sản / vốn chủ (bổ trợ, không vào FR)','Giá trị':leverage,'Đơn vị':'lần'})
+ return out
+
+
+def bank_dashboard_export(data):
+ base=financial_calculate(data);model=bank_dashboard_model(data)
+ wb=load_workbook(BytesIO(financial_export(data,base)))
+ for title,rows in [('Bang_9_tieu_chi',model['health_rows']),('FR_thanh_phan',model['risk_rows'])]:
+  ws=wb.create_sheet(title)
+  if rows:
+   ws.append(list(rows[0]))
+   for r in rows:ws.append([safe_text(v) for v in r.values()])
+  format_sheet(ws)
+ ws=wb.create_sheet('Quy_uoc_bang');ws.append(['Mục','Giá trị'])
+ for pair in [('Phiên bản mô hình',DASHBOARD_MODEL),('Số tiêu chí đủ dữ liệu',model['known_health']),('Điểm 9 tiêu chí (không phải F-Score)',model['health_score']),('FR hiển thị (chặn 0–10)',model['risk_score']),('FR tổng trước chặn',model['risk_raw']),('Ngưỡng quy ước',5),('Giới hạn','Quy tắc do người dùng cung cấp, có điều chỉnh; chưa hiệu chuẩn, không phải xác suất hoặc kết luận an toàn ngân hàng.')]:ws.append(pair)
+ format_sheet(ws);out=BytesIO();wb.save(out);return out.getvalue()
+
+
+def bank_collection_key(d):
+ return '|'.join([d['meta']['ticker'].strip().upper(),str(d['meta']['year']),d['meta']['scope']])
+
+
+def restore_bank_collection(content):
+ if len(content)>5*1024*1024:raise ValueError('Bộ lưu vượt 5 MB.')
+ def reject(value):raise ValueError('Không nhận NaN/Infinity trong bộ lưu.')
+ obj=json.loads(content,parse_constant=reject)
+ if not isinstance(obj,dict) or obj.get('format')!='StockAI_bank_collection_v1':raise ValueError('Sai định dạng bộ lưu.')
+ records=obj.get('records')
+ if not isinstance(records,list) or len(records)>100:raise ValueError('Bộ lưu tối đa 100 bản phân tích.')
+ restored={}
+ for r in records:
+  if not isinstance(r,dict) or not isinstance(r.get('data'),dict):raise ValueError('Bản phân tích không hợp lệ.')
+  d=r['data'];expected=financial_blank('bank')
+  if d.get('kind')!='bank' or set(d.get('meta',{}))!=set(expected['meta']) or set(d.get('periods',{}))!=set(YEARS):raise ValueError('Sai cấu trúc ngân hàng.')
+  if any(set(d['periods'][y])!=set(BANK_FIELDS) for y in YEARS):raise ValueError('Thiếu/thừa trường số liệu.')
+  clean=financial_import(financial_export(d),'bank')
+  if financial_calculate(clean)['errors']:raise ValueError('Bộ lưu có dữ liệu không hợp lệ.')
+  if not re.fullmatch(r'[A-Z0-9]{1,15}',clean['meta']['ticker']):raise ValueError('Mã lưu không hợp lệ.')
+  k=bank_collection_key(clean)
+  if k in restored:raise ValueError('Trùng mã/năm/phạm vi trong bộ lưu.')
+  restored[k]={'data':clean,'saved_at':str(r.get('saved_at',''))[:64]}
+ return restored
+
+
+def bank_dashboard_page():
+ st.markdown('''<style>
+ .bank-head{padding:18px 0 22px;border-bottom:1px solid #334155;margin-bottom:20px;text-align:center}
+ .bank-head h1{font-size:30px!important;color:#60a5fa!important;margin:0}.bank-head p{color:#94a3b8}
+ .bank-card{background:#0b1220;color:#e2e8f0;border:1px solid #334155;border-radius:16px;padding:22px;margin:12px 0}
+ .bank-card h3{color:#e2e8f0!important;font-size:17px!important}.bank-value{font-size:52px;line-height:1.2;font-weight:800;margin:10px 0}
+ .bank-note{font-size:12px;color:#cbd5e1}.bank-row{padding:8px 0;border-bottom:1px solid #334155;font-size:12px;display:flex;justify-content:space-between;gap:10px}
+ </style><div class="bank-head"><h1>Đánh giá sức khỏe &amp; cảnh báo ngân hàng</h1><p>9 tiêu chí tham khảo · FR-Index tùy chỉnh · Số liệu BCTC có nguồn</p></div>''',unsafe_allow_html=True)
+ storage='finance_bank';revkey=storage+'_revision'
+ if storage not in st.session_state:st.session_state[storage]=financial_blank('bank')
+ if revkey not in st.session_state:st.session_state[revkey]=0
+ if 'bank_saved' not in st.session_state:st.session_state.bank_saved={}
+ def load(d):st.session_state[storage]=deepcopy(d);st.session_state[revkey]+=1
+ with st.expander('Tạo mới, minh họa hoặc nhập Excel',expanded=False):
+  a,b,c=st.columns(3)
+  if a.button('Làm mới',key='board_new'):load(financial_blank('bank'));st.rerun()
+  if b.button('Nạp minh họa',key='board_demo'):load(financial_demo('bank'));st.rerun()
+  c.download_button('Tải mẫu Excel',financial_export(financial_blank('bank')),'Mau_ngan_hang.xlsx',key='board_template')
+  up=st.file_uploader('Chọn Excel ngân hàng',type=['xlsx'],key='board_upload')
+  if st.button('Áp dụng Excel',disabled=up is None,key='board_apply'):
+   try:load(financial_import(up.getvalue(),'bank'));st.rerun()
+   except Exception as exc:st.error('Không nhập được: '+str(exc))
+ data=st.session_state[storage];m=data['meta'];rev=st.session_state[revkey]
+ def key(k):return f'board_{rev}_{k}'
+ a,b,c=st.columns([1,1,1])
+ m['ticker']=a.text_input('Mã ngân hàng',value=m['ticker'],max_chars=15,key=key('ticker')).strip().upper()
+ m['year']=b.number_input('Năm báo cáo t',min_value=1990,max_value=2100,value=m['year'],key=key('year'))
+ units=['VND','Nghìn VND','Triệu VND','Tỷ VND'];m['unit']=c.selectbox('Đơn vị BCTC',units,index=units.index(m['unit']),key=key('unit'))
+ scopes=['Hợp nhất','Riêng lẻ'];m['scope']=st.selectbox('Phạm vi',scopes,index=scopes.index(m['scope']),key=key('scope'))
+ m['source']=st.text_input('Nguồn BCTC và trang/thuyết minh',value=m['source'],max_chars=3000,key=key('source'))
+ with st.expander('Nguồn bổ sung và nhãn minh họa'):
+  m['capital_source']=st.text_input('Nguồn/kỳ/phạm vi CAR',value=m['capital_source'],max_chars=3000,key=key('capital_source'))
+  m['price_source']=st.text_input('Ngày giá và nguồn EPS/BVPS',value=m['price_source'],max_chars=3000,key=key('price_source'))
+  m['demo']=st.checkbox('Đây là dữ liệu minh họa',value=m['demo'],key=key('demo'))
+ if m['demo']:st.warning('DỮ LIỆU MINHỌA — không phải BCTC thật của mã đang hiển thị.')
+ st.caption('Các ngưỡng 1%, 12%, 10%, 2%, 70–85%, 5 điểm là quy ước nội bộ từ mẫu của bạn, không phải chuẩn ngành/pháp lý. Chỉ nhập BCTC cả năm; để trống khi chưa biết.')
+ left,right=st.columns([1.4,1],gap='large')
+ primary=['assets','equity','loans','deposits','npl','loan_reserves','net_income','net_interest','operating_income','operating_cost']
+ def field(col,y,k):
+  old=data['periods'][y][k]
+  data['periods'][y][k]=col.number_input(BANK_FIELDS[k][0],value=float(old) if old is not None else None,format='%.4f',help=BANK_FIELDS[k][1],key=key(y+'_'+k))
+ with left:
+  st.subheader('Nhập số liệu hai năm')
+  c1,c2=st.columns(2);c1.markdown(f'**NĂM t — {m["year"]}**');c2.markdown(f'**NĂM t−1 — {m["year"]-1}**')
+  for k in primary:field(c1,'t',k);field(c2,'t1',k)
+  with st.expander('Dữ liệu NIM và số đầu kỳ — cần để đủ 9 tiêu chí',expanded=True):
+   st.caption('NIM dùng tài sản sinh lãi bình quân, không dùng dư nợ cho vay. Nhập NIM công bố cả hai năm hoặc bổ sung tài sản sinh lãi ba mốc. ROA so sánh cần tổng tài sản cuối t−2.')
+   for k in ['earning_assets','nim_reported']:
+    x,y=st.columns(2);x.caption('Năm t');y.caption('Năm t−1');field(x,'t',k);field(y,'t1',k)
+   for k in ['assets','equity','loans','earning_assets']:field(st,'t2',k)
+  with st.expander('Chỉ tiêu khác: CASA, nợ nhóm 2, CAR, định giá'):
+   others=[k for k in BANK_FIELDS if k not in primary+['earning_assets','nim_reported']]
+   x,y=st.columns(2);x.caption('Năm t');y.caption('Năm t−1')
+   for k in others:field(x,'t',k);field(y,'t1',k)
+ model=bank_dashboard_model(data);base=financial_calculate(data)
+ with right:
+  risk=model['risk_score'];health=model['health_score']
+  risk_color='#fbbf24' if risk is None else '#fb7185' if risk>5 else '#60a5fa'
+  risk_value='—' if risk is None else f'{risk:.1f}'
+  risk_text='Chưa đủ dữ liệu' if risk is None else 'Vượt mốc quy ước 5 điểm' if risk>5 else 'Không vượt mốc quy ước 5 điểm'
+  st.markdown(f'<div class="bank-card"><h3>Chỉ số cảnh báo tùy chỉnh (FR-Index)</h3><div class="bank-value" style="color:{risk_color}">{risk_value}<span style="font-size:16px;color:#94a3b8"> / 10</span></div><b>{risk_text}</b><p class="bank-note">Không phải xác suất gian lận hoặc kết luận ngân hàng an toàn. Mô hình chưa được hiệu chuẩn trên dữ liệu thực.</p></div>',unsafe_allow_html=True)
+  for r in model['metrics']:
+   v=r['Giá trị'];text='Chưa xác định' if v is None else f'{v*100:.2f}%' if r['Đơn vị']=='%' else f'{v:.2f} lần'
+   st.markdown(f'<div class="bank-row"><span>{html.escape(r["Biến số"])}</span><b>{text}</b></div>',unsafe_allow_html=True)
+  if risk is not None:
+   st.caption(f'Tổng trước chặn: {model["risk_raw"]:.3f}. Hiển thị chặn trong [0,10]; trên 10 bị bão hòa. Đòn bẩy chỉ hiển thị bổ trợ, không có trọng số trong FR.')
+  st.markdown(f'<div class="bank-card"><h3>9 tiêu chí sức khỏe tham khảo</h3><div class="bank-value" style="color:#34d399">{health if health is not None else "—"}<span style="font-size:24px;color:#94a3b8"> / 9</span></div><p class="bank-note">Đủ dữ liệu {model["known_health"]}/9 tiêu chí. Đây không phải Piotroski F-Score và không dùng để khẳng định “rất khỏe/an toàn”.</p></div>',unsafe_allow_html=True)
+  for r in model['health_rows']:
+   text='Chưa đủ' if r['Đạt'] is None else 'Đạt' if r['Đạt'] else 'Không đạt'
+   color='#94a3b8' if r['Đạt'] is None else '#34d399' if r['Đạt'] else '#fbbf24'
+   st.markdown(f'<div class="bank-row"><span>{html.escape(r["Tiêu chí"])}</span><b style="color:{color}">{text}</b></div>',unsafe_allow_html=True)
+  for message in model['errors']:st.error(message)
+  with st.expander('Chi tiết tiêu chí và từng đóng góp FR'):
+   st.dataframe(pd.DataFrame(model['health_rows']),hide_index=True,width='stretch');st.dataframe(pd.DataFrame(model['risk_rows']),hide_index=True,width='stretch')
+   st.caption('Sửa so với HTML: phần thiếu bao phủ = max(0, 1 − min(LLR,1.5)) × 15, không để dự phòng cao tạo đóng góp âm bù cảnh báo khác. Nếu một thành phần chưa xác định, không trả tổng FR.')
+ with st.expander('Toàn bộ chỉ tiêu ngân hàng và lưu ý dữ liệu'):
+  for n in base['notes']:st.warning(n)
+  st.dataframe(pd.DataFrame(base['rows']),hide_index=True,width='stretch')
+ a,b=st.columns(2)
+ if a.button('Lưu / Cập nhật vào danh sách phiên',type='primary',key='board_save'):
+  if not re.fullmatch(r'[A-Z0-9]{1,15}',m['ticker']):st.error('Nhập mã hợp lệ trước khi lưu.')
+  elif base['errors']:st.error('Sửa lỗi số liệu trước khi lưu.')
+  elif len(st.session_state.bank_saved)>=100 and bank_collection_key(data) not in st.session_state.bank_saved:st.error('Danh sách tối đa 100 bản.')
+  else:
+   st.session_state.bank_saved[bank_collection_key(data)]={'data':deepcopy(data),'saved_at':datetime.now().isoformat(timespec='seconds')}
+   st.success('Đã lưu vào phiên. Hãy tải bộ lưu JSON hoặc Excel để giữ sau khi phiên kết thúc.')
+ name=re.sub(r'[^A-Z0-9_-]','',m['ticker']) or 'CHUA_DAT_MA'
+ b.download_button('Tải Excel gồm số liệu + điểm tham khảo',bank_dashboard_export(data),f'{name}_{m["year"]}_bang_ngan_hang.xlsx',key='board_export')
+ st.subheader('Danh sách ngân hàng đã lưu trong phiên')
+ st.caption('Không tự lưu lâu dài trong trình duyệt và không phải kho dùng chung. Lưu theo mã + năm + phạm vi; cùng mã khác năm không ghi đè nhau. Tải bộ lưu để khôi phục lần sau.')
+ book=st.session_state.bank_saved
+ if book:
+  table=[]
+  for k,r in book.items():
+   d=r['data'];s=bank_dashboard_model(d);table.append({'Mã':d['meta']['ticker'],'Năm':d['meta']['year'],'Phạm vi':d['meta']['scope'],'9 tiêu chí':s['health_score'],'FR tùy chỉnh':s['risk_score'],'Nhãn dữ liệu':'Minh họa' if d['meta']['demo'] else 'Người dùng nhập'})
+  st.dataframe(pd.DataFrame(table),hide_index=True,width='stretch')
+  selected=st.selectbox('Chọn bản đã lưu',list(book),key='board_saved_choice')
+  a,b=st.columns(2)
+  if a.button('Xem / Sửa',key='board_load'):load(book[selected]['data']);st.rerun()
+  if b.button('Xóa khỏi danh sách phiên',key='board_delete'):del book[selected];st.rerun()
+  backup={'format':'StockAI_bank_collection_v1','records':list(book.values())}
+  st.download_button('Tải bộ lưu tất cả ngân hàng (.json)',json.dumps(backup,ensure_ascii=False,allow_nan=False,indent=2).encode('utf-8'),'Bo_luu_ngan_hang.json',key='board_backup')
+ else:st.info('Chưa có bản lưu. Bạn có thể lưu cả bản chưa đủ điểm để nhập tiếp, nhưng điểm vẫn ghi chưa đủ dữ liệu.')
+ with st.expander('Khôi phục bộ lưu JSON'):
+  restored_file=st.file_uploader('Bộ lưu đã tải từ app (tối đa 5 MB)',type=['json'],key='board_restore_file')
+  confirm=st.checkbox('Thay toàn bộ danh sách trong phiên bằng bộ lưu được chọn',key='board_restore_confirm')
+  if st.button('Khôi phục danh sách',disabled=restored_file is None or not confirm,key='board_restore'):
+   try:st.session_state.bank_saved=restore_bank_collection(restored_file.getvalue());st.rerun()
+   except Exception as exc:st.error('Không khôi phục được: '+str(exc))
+
+
 def financial_page(kind):
+ if kind=='bank':
+  bank_dashboard_page();return
  storage='finance_'+kind
  if storage not in st.session_state:st.session_state[storage]=financial_blank(kind)
  revkey=storage+'_revision'
@@ -481,16 +702,16 @@ def replace(data):
  st.session_state.data=deepcopy(data)
  st.session_state.revision+=1
 
-USER_GUIDE='## StockAI Độc lập 1.1 — ngân hàng và chứng khoán\n\nBản này mở rộng StockAI_DocLap_v1. Vẫn có phân tích F/M-Score cho doanh nghiệp phi tài chính, nhập tay/Excel và bảng vĩ mô. Thêm hai phân hệ ngân hàng, công ty chứng khoán. Đây là bản độc lập, không có tài khoản, Supabase hoặc kho cộng đồng.\n\n### Cập nhật web Streamlit đã có\n\n1. Giải nén gói, thay **app.py** và **requirements.txt** trong repository GitHub đang nối với app (ví dụ macro-stock-app). Đặt app.py đúng vị trí file chạy đã cấu hình, không đặt lồng thêm một thư mục.\n2. Commit và chờ Streamlit cài lại thư viện. Nếu chưa cập nhật, vào Manage app → Reboot app.\n3. Không cần engine.py/file_io.py, mẫu Excel có sẵn hoặc Secrets: app.py đã chứa toàn bộ mã và tự tạo mẫu để tải. Tệp cũ có thể để nguyên vì app mới không import chúng.\n4. Chọn Ngân hàng hoặc Công ty chứng khoán ở thanh bên; nạp minh họa để thử. Không cần cài Python trên máy người xem web.\n\nNếu chạy máy cá nhân: cài Python 3.11/3.12, chạy `python -m pip install -r requirements.txt`, sau đó `python -m streamlit run app.py`.\n\n### Quy trình phân tích\n\n1. Chọn đúng nhóm doanh nghiệp. Chỉ dùng BCTC **cả năm** của hai năm liền nhau. Nhập năm t, mã, đơn vị, hợp nhất/riêng lẻ.\n2. Nguồn BCTC: ghi link và trang/thuyết minh. CAR ngân hàng/vốn khả dụng CTCK có thể theo báo cáo riêng lẻ, khác BCTC hợp nhất: ghi đúng phạm vi và kỳ trong ô nguồn an toàn vốn.\n3. Tải mẫu Excel đúng nhóm hoặc nhập ngay trên web. Các mẫu ngân hàng, chứng khoán và F/M-Score không hoán đổi cho nhau.\n4. Ô trống = chưa biết; số 0 = đã xác minh bằng 0. Không nhập 0 để xóa thông báo thiếu dữ liệu. Chi phí/lỗ FVTPL nhập trị dương; LNST, LNTT và khoản dự phòng ròng hoàn nhập có thể âm.\n5. Tab t−2 chỉ cần số dư đầu kỳ phục vụ bình quân. Ngân hàng: tài sản, vốn chủ, cho vay và tài sản sinh lãi. Chứng khoán: tài sản, vốn chủ và dư nợ margin.\n6. Xem bảng công thức, giới hạn và lý do chỉ tiêu chưa tính được. Mỗi chỉ tiêu tính độc lập; thiếu một chỉ tiêu không tự biến thành 0 hoặc một điểm số tổng.\n7. Tải dữ liệu và kết quả Excel trước khi đóng tab. Có thể nhập lại tệp này ở đúng nhóm để dùng tiếp. Các sheet kết quả là ảnh chụp tại thời điểm tải, không phải bảng Excel tự tính lại.\n\n### Đơn vị quan trọng\n\n- Các khoản BCTC dùng cùng một đơn vị cho mọi năm. Chọn Triệu VND thì nhập số theo triệu. Đổi nhãn đơn vị không chuyển đổi số đã nhập.\n- Giá, EPS, BVPS luôn là **VND/cổ phiếu**, không đổi sang triệu/tỷ theo số liệu BCTC.\n- CAR/NIM/vốn khả dụng công bố nhập theo **phần trăm**: 12.5 nghĩa 12,5%; 250 nghĩa 250%, không nhập 0.125 thay cho 12,5%.\n- Cột thay đổi của tỷ lệ là chênh **điểm phần trăm**; của bội số là chênh số lần. Không phải tăng trưởng phần trăm của tỷ lệ.\n\n### Ngân hàng\n\n| Chỉ tiêu | Cách lấy và công thức |\n|---|---|\n| ROA, ROE | Tổng LNST / tổng tài sản hoặc vốn chủ bình quân hai mốc. Không trộn LNST cổ đông mẹ với vốn chủ có lợi ích không kiểm soát. |\n| NPL | Nợ nhóm 3–5 / cho vay khách hàng gộp trước dự phòng, cùng phạm vi. |\n| Nợ nhóm 2 | Nợ nhóm 2 / cho vay khách hàng gộp. |\n| LLR | Số dư dự phòng cho vay khách hàng / nợ nhóm 3–5. Không dùng dự phòng chứng khoán/cam kết khác. Nợ xấu bằng 0 không có tỷ lệ này. |\n| CASA | Tiền gửi khách hàng không kỳ hạn / tổng tiền gửi khách hàng. Có thể khác định nghĩa CASA công bố nếu ngân hàng dùng phạm vi khác. |\n| Cho vay / tiền gửi | Cho vay khách hàng / tiền gửi khách hàng. Đây là chỉ báo cơ cấu, **không phải LDR pháp lý**. |\n| NIM tính hai mốc | Thu nhập lãi thuần cả năm / tài sản sinh lãi bình quân đầu-cuối năm. Không dùng tổng tài sản thay tài sản sinh lãi. |\n| NIM công bố | Nhập thêm từ IR để đối chiếu, không tự thay thế NIM tính hai mốc. Bình quân ngày/tháng/quý có thể khác hai mốc. |\n| CIR | Chi phí hoạt động / tổng thu nhập hoạt động thuần (TOI), trước dự phòng. Không cộng chi phí lãi/dự phòng vào chi phí hoạt động. |\n| Chi phí tín dụng xấp xỉ | Chi phí dự phòng cho vay ròng trong năm / cho vay bình quân hai mốc; không lấy số dư dự phòng cuối kỳ. Hoàn nhập ròng có thể âm. |\n| CAR | Nhập chỉ số công bố và nguồn/chuẩn/phạm vi; không tính vốn chủ/tổng tài sản để gọi là CAR. |\n\nTheo dõi thêm tăng trưởng LNST, cho vay khách hàng và tiền gửi. Chỉ tính tăng trưởng phần trăm nếu giá trị năm gốc dương. Năm gốc âm/0 cần đọc số tuyệt đối, không đưa ra tốc độ tăng gây hiểu nhầm.\n\n### Công ty chứng khoán\n\n| Chỉ tiêu | Cách lấy và công thức |\n|---|---|\n| ROA, ROE | Tổng LNST / tài sản hoặc vốn chủ bình quân hai mốc. |\n| Nợ vay / vốn chủ | Vay chịu lãi / vốn chủ cuối kỳ; khác tổng nợ phải trả. |\n| Tài sản / vốn chủ | Chỉ báo đòn bẩy tổng thể. |\n| Margin / vốn chủ | Dư nợ cho vay ký quỹ / vốn chủ. Không gộp ứng trước nếu đang phân tích riêng margin. |\n| Lợi suất margin xấp xỉ | Lãi margin cả năm / dư nợ margin bình quân hai mốc. Không dùng cả lãi tiền gửi/ứng trước. |\n| Tỷ trọng môi giới/margin | Doanh thu môi giới hoặc lãi margin / doanh thu hoạt động, không phải tỷ trọng lợi nhuận. |\n| FVTPL ròng / doanh thu | (Lãi FVTPL − lỗ FVTPL) / doanh thu hoạt động. Có thể gồm đánh giá lại chưa thực hiện; không phải toàn bộ lợi nhuận tự doanh. Các tỷ trọng không bắt buộc cộng bằng 100%. |\n| FVTPL / vốn chủ | Giá trị ghi sổ FVTPL / vốn chủ; cần xem cơ cấu cổ phiếu, trái phiếu, chứng chỉ tiền gửi... |\n| Bao phủ nợ NH bằng tiền | Tiền và tiền gửi ngắn hạn thuộc công ty / nợ ngắn hạn. Không cộng tiền nhà đầu tư; đây là chỉ báo đơn giản. |\n| Biên LNTT | LNTT / doanh thu hoạt động, cùng cách phân loại hai năm. |\n| Tỷ lệ vốn khả dụng | Nhập từ Báo cáo tỷ lệ an toàn tài chính, ghi ngày/phạm vi riêng lẻ và căn cứ tính. Không suy ra từ vốn chủ BCTC hợp nhất. |\n\nTheo dõi tăng trưởng LNST, doanh thu hoạt động và dư nợ margin. Không tự coi margin tăng hoặc FVTPL tăng là tốt: cần xem nguồn vốn, tập trung tài sản và thị trường.\n\n### P/E và P/B cho cả hai nhóm\n\nGiá và EPS/BVPS nhập tay, không có dữ liệu giá tự động. Ghi riêng ngày giá t, ngày giá t−1, nguồn và cách điều chỉnh cổ phiếu. P/E = giá/EPS cơ bản công bố; P/B = giá/BVPS của cổ phần phổ thông. Không dùng tổng LNST chia số cổ phiếu cuối kỳ để thay EPS bình quân gia quyền. EPS hoặc BVPS không dương thì chỉ số tương ứng không tính. Thiếu giá không chặn phân tích sức khỏe tài chính.\n\n### Excel\n\n- Sheet Tai_chinh: giữ nguyên field, tiêu đề, số dòng; điền t, t1 và các số dư t2 cần thiết.\n- Sheet Thong_tin_TC: kind là bank hoặc broker, không đổi sang nhóm khác; year là năm t; demo là TRUE/FALSE; ghi nguồn ở source, capital_source, price_source.\n- Giá trị số phải là số thật trong Excel, không dùng công thức hoặc số dạng chữ. Không đổi tiêu đề/cột. Tệp tối đa 5 MB.\n- Không thể nhập mẫu tài chính vào chức năng F/M-Score và ngược lại.\n\n### Giới hạn\n\nBản độc lập chỉ tính và xuất file; không lưu bài của thành viên chung trên máy chủ. Bản này giữ đúng phạm vi yêu cầu nâng cấp StockAI_DocLap_v1, không mang tính năng Supabase của bản cộng đồng 2.0 vào.\n\nĐây là bộ chỉ tiêu mô tả, không có thang điểm ngân hàng/chứng khoán tự đặt. Không áp dụng F-Score/M-Score cho hai nhóm này. Không kiểm tra tuân thủ các ngưỡng an toàn vốn/margin/LDR; không coi các tỷ lệ đơn giản là tỷ lệ pháp lý. Không kết luận mua/bán, xác suất gian lận hoặc chất lượng khoản vay chỉ từ một chỉ số. Chưa đọc PDF/cào dữ liệu tự động và chưa đối chiếu nguồn gốc của dữ liệu nhập tay.\n\n### Nguồn tham khảo định nghĩa và nơi lấy dữ liệu\n\n- Techcombank — định nghĩa chỉ số IR và phạm vi: https://techcombank.com/en/investors/financial-information/highlights\n- SSI — BCTC và Báo cáo tỷ lệ an toàn tài chính: https://www.ssi.com.vn/quan-he-nha-dau-tu/bao-cao-tai-chinh\n- SSI — Báo cáo thường niên và cơ cấu hoạt động: https://www.ssi.com.vn/quan-he-nha-dau-tu/bao-cao-thuong-nien\n\nCác số minh họa hoàn toàn giả lập, không trích từ những doanh nghiệp này. Khi dùng thật, cần báo cáo của chính doanh nghiệp và năm đang phân tích.\n'
+USER_GUIDE='## StockAI Độc lập 1.2 — bảng ngân hàng theo mẫu của bạn\n\n### Cập nhật web đã có\n\n1. Thay app.py và requirements.txt trong repository GitHub đang nối Streamlit, ở đúng đường dẫn app.py cũ. Bản này vẫn chỉ cần một app.py.\n2. Để có nền tối giống mẫu, thêm/thay tệp **.streamlit/config.toml** theo gói. Trên GitHub có thể chọn Add file → Create new file và gõ chính xác `.streamlit/config.toml`, dán nội dung tệp mẫu rồi Commit.\n3. Chờ app cập nhật hoặc Reboot. Chọn **Ngân hàng**: nhập hai năm ở trái, xem FR-Index và 9 tiêu chí ở phải; danh sách lưu ở bên dưới.\n4. Dùng mục Tạo mới, minh họa hoặc nhập Excel → Nạp minh họa để thử. Dữ liệu mặc định trống; minh họa không phải số liệu thật của TCB hay ngân hàng nào.\n\nCác phần F/M-Score cho doanh nghiệp phi tài chính, Công ty chứng khoán và Vĩ mô vẫn có. Bộ quy tắc ngân hàng không áp dụng cho công ty chứng khoán. Không cần Google Sheets, Apps Script hoặc Secrets trong bản độc lập.\n\n### Những điểm giữ theo mẫu HTML\n\n- Tông tối xanh, thẻ kết quả bên phải và hai cột năm t/t−1 bên trái.\n- Chín tiêu chí tham khảo, từng tiêu chí Đạt/Không đạt/Chưa đủ dữ liệu.\n- FR-Index tùy chỉnh với từng thành phần đóng góp, tổng trước chặn và số hiển thị 0–10.\n- Nhập mã, lưu/cập nhật, danh sách nhiều mã và xem/sửa/xóa bản lưu.\n\n### Những điểm đã điều chỉnh để tránh kết quả sai\n\n**1. Bộ quy tắc không phải mô hình nghiên cứu đã xác thực.** Các ngưỡng được lấy từ mẫu bạn gửi. App không gọi đó là Piotroski F-Score, xác suất gian lận, kết luận an toàn ngân hàng hay khuyến nghị mua/bán. Nhãn “không vượt 5” chỉ nói về mốc quy ước, không đồng nghĩa rủi ro thực thấp.\n\n**2. Thiếu dữ liệu không được coi là 0.** Nếu chưa đủ chín tiêu chí, tổng sức khỏe hiển thị “—”, kèm số tiêu chí đủ dữ liệu. Nếu một thành phần FR chưa xác định thì không trả tổng FR. Lưu được bản nháp chưa đủ điểm để làm tiếp.\n\n**3. ROA và ROE dùng bình quân hai mốc.** ROA t cần tài sản t và t−1; ROA t−1 cần t−1 và t−2. Tương tự vốn chủ bình quân cho ROE.\n\n**4. NIM đã sửa mẫu số.** Không lấy thu nhập lãi thuần/cho vay để gọi là NIM. Chọn một trong hai cách tự động, không trộn:\n- Nếu đã nhập NIM công bố của CẢ HAI năm: so sánh hai NIM công bố. Bạn cần đối chiếu cùng định nghĩa, kỳ và phạm vi.\n- Nếu không có đủ cả hai NIM công bố: dùng thu nhập lãi thuần/tài sản sinh lãi bình quân hai mốc cho cả hai năm. Cần tài sản sinh lãi t, t−1, t−2. Bình quân hai mốc có thể khác bình quân nhiều mốc công bố.\n\n**5. Cho vay/tiền gửi chỉ là tỷ lệ kế toán tham khảo.** Khoảng 70–85% trong tiêu chí là quy ước của mẫu bạn gửi, không phải kết luận LDR pháp lý. Tương tự vốn chủ/tài sản >10% không phải CAR hoặc tiêu chuẩn vốn pháp lý.\n\n**6. FR không có thành phần âm bù trừ cảnh báo khác.** Công thức hiện tại:\n\nFR thô = 30 × NPL/cho vay\n+ 15 × max(0, tốc độ tăng NPL)\n+ 20 × max(0, cho vay/tiền gửi − 0,85)\n+ 15 × max(0, 1 − min(bao phủ nợ xấu, 1,5))\n+ 20 × max(0, CIR − 0,40).\n\nFR hiển thị = min(10, max(0, FR thô)). FR > 5 là “vượt mốc quy ước”. Thẻ cũng hiển thị FR thô vì chặn trên 10 làm mất khác biệt giữa các trường hợp cao. Bao phủ >100% không tạo điểm âm giảm cảnh báo khác. Đòn bẩy được hiển thị bổ trợ nhưng KHÔNG có trọng số trong FR, đúng phạm vi công thức mẫu (không tự bổ sung trọng số).\n\nNPL năm trước bằng 0: không có tốc độ tăng phần trăm xác định, nên FR chưa tính được. NPL hiện tại bằng 0: tỷ lệ NPL là 0 nhưng bao phủ nợ xấu chưa xác định, không tự thay bằng 0 hoặc vô cực. Đây là giới hạn của bộ quy tắc này.\n\n### Chín tiêu chí đang dùng\n\n1. LNST t > 0.\n2. ROA t > 1%.\n3. ROA t > ROA t−1.\n4. ROE t > 12%.\n5. Vốn chủ cuối kỳ/tổng tài sản cuối kỳ > 10%.\n6. NPL nhóm 3–5/cho vay khách hàng gộp < 2%.\n7. Dự phòng cho vay khách hàng/NPL ≥ 100%.\n8. 70% ≤ cho vay khách hàng/tiền gửi khách hàng ≤ 85%.\n9. NIM t ≥ NIM t−1, cùng cách tính.\n\nTất cả là tiêu chí tham khảo nội bộ, chưa được hiệu chuẩn cho thị trường Việt Nam. Số tiêu chí đạt nhiều không thay thế đọc nợ tái cơ cấu, ngoại bảng, tập trung tín dụng, tài sản bảo đảm, nguồn vốn hoặc chất lượng lợi nhuận.\n\n### Lưu và khôi phục\n\nTrong Streamlit, bản này lưu danh sách ở **session_state**, không tự lưu lâu dài qua localStorage như HTML gốc.\n\n- Lưu/Cập nhật tạo bản trong phiên, khóa theo **mã + năm + hợp nhất/riêng lẻ**, nên không mất năm cũ khi thêm năm mới.\n- Đóng phiên/máy chủ khởi động lại có thể mất danh sách chưa tải. Để giữ lâu dài, bấm **Tải bộ lưu tất cả ngân hàng (.json)**.\n- Lần sau mở Khôi phục bộ lưu JSON, chọn tệp, xác nhận thay danh sách phiên rồi khôi phục. Số liệu được kiểm tra và điểm được tính lại, không tin vào điểm cũ trong tệp.\n- Danh sách tối đa 100 bản, tệp JSON tối đa 5 MB. Bộ khôi phục thay TOÀN BỘ danh sách phiên, không tự trộn.\n- Tải Excel từng bài để lưu số liệu, toàn bộ chỉ tiêu ngành, bảng 9 tiêu chí, thành phần FR và ghi chú quy ước. Tệp Excel đó nhập lại bằng mục Excel ngân hàng được.\n- Xóa chỉ xóa bản trong phiên hiện tại, không xóa các tệp bạn đã tải.\n- Đây không phải kho cộng đồng dùng chung; nếu muốn lưu bài của các thành viên trên máy chủ, cần tích hợp vào bản cộng đồng có cơ sở dữ liệu.\n\n### Cách nhập số đúng\n\nChỉ nhập BCTC cả năm, cùng đơn vị tiền, cùng phạm vi hợp nhất/riêng lẻ. Chi phí/dự phòng số dư nhập dương; LNST và thu nhập lãi thuần có thể âm. NPL là nhóm 3–5; cho vay khách hàng gộp trước dự phòng; tiền gửi là tiền gửi khách hàng, không gộp tiền gửi tổ chức tín dụng. Dự phòng cho vay cần cùng phạm vi với NPL.\n\nPhần mở rộng vẫn có CASA, nợ nhóm 2, chi phí tín dụng, CAR công bố và P/E/P/B. Giá/EPS/BVPS dùng VND/cp bất kể đơn vị BCTC. CAR/NIM công bố nhập 12.5 nếu là 12,5%. Ghi ngày và nguồn; không tự suy ra CAR từ tỷ lệ vốn chủ/tài sản.\n\nExcel dùng hai sheet Tai_chinh và Thong_tin_TC. Không đổi field/cột, không nhập công thức hay số dạng chữ. Các sheet điểm là ảnh chụp kết quả tại thời điểm tải; sửa số xong nhập lại app để tính. Mẫu ngân hàng và chứng khoán không thay thế nhau.\n\n### Giới hạn kiểm chứng\n\nỨng dụng chưa đọc PDF/cào BCTC, chưa kiểm tra nguồn nhập tay và chưa hiệu chuẩn FR/9 tiêu chí trên dữ liệu thực. Các số liệu minh họa giả lập chỉ để kiểm tra công thức. Không áp dụng điểm ngân hàng cho công ty chứng khoán.\n'
 
 def main():
  st.set_page_config(page_title='StockAI | Phân tích BCTC',page_icon='📊',layout='wide')
- st.markdown('''<style>.block-container{max-width:1200px;padding-top:2rem}h1,h2,h3{color:#123047}div[data-testid="stMetric"]{background:#eef5f7;padding:16px;border-radius:12px}.stButton>button{border-radius:8px} </style>''',unsafe_allow_html=True)
+ st.markdown('''<style>.block-container{max-width:1200px;padding-top:2rem}h1,h2,h3{color:#93c5fd}div[data-testid="stMetric"]{background:#0b1220;color:#e2e8f0;padding:16px;border-radius:12px}.stButton>button{border-radius:8px} </style>''',unsafe_allow_html=True)
  if 'data' not in st.session_state:st.session_state.data=blank()
  if 'revision' not in st.session_state:st.session_state.revision=0
  
  st.sidebar.title('NHÀ ĐẦU TƯ\nTHÔNG THÁI')
- st.sidebar.caption('Công cụ đọc hiểu BCTC • Phiên bản độc lập 1.1')
+ st.sidebar.caption('Công cụ đọc hiểu BCTC • Phiên bản độc lập 1.2')
  page=st.sidebar.radio('Chức năng',['Phân tích BCTC','Ngân hàng','Công ty chứng khoán','Vĩ mô thủ công','Hướng dẫn'])
  st.sidebar.info('Dùng ngay, không cần tài khoản. Phiên làm việc không phải nơi lưu lâu dài; hãy tải Excel trước khi thoát.')
  if page=='Phân tích BCTC':
@@ -582,7 +803,7 @@ def main():
  else:
   st.title('Hướng dẫn sử dụng')
   st.markdown(USER_GUIDE)
- st.divider();st.caption('StockAI Độc lập 1.1 • Công cụ hỗ trợ đọc BCTC. Dữ liệu do người dùng cung cấp, chưa được đối chiếu tự động với báo cáo gốc.')
+ st.divider();st.caption('StockAI Độc lập 1.2 • Công cụ hỗ trợ đọc BCTC. Dữ liệu do người dùng cung cấp, chưa được đối chiếu tự động với báo cáo gốc.')
 
 if __name__=="__main__":
  main()
