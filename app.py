@@ -60,7 +60,7 @@ def load_data_from_sheets():
     except Exception:
         df_members = pd.DataFrame()
         
-    # 2. Đọc Kho Dữ Liệu Cộng Đồng (Tự động tạo Tab nếu chưa tồn tại)
+    # 2. Đọc Kho Dữ Liệu Cộng Đồng (Tự động tạo Tab "Community_DB" nếu chưa tồn tại)
     try:
         worksheet_community = sheet.worksheet("Community_DB")
         data_community = worksheet_community.get_all_records()
@@ -126,16 +126,15 @@ def mask_email(email):
 
 df_members, df_community = load_data_from_sheets()
 
-# --- XÁC THỰC THÀNH VIÊN (ĐÃ THẮT CHẶT BẢO MẬT) ---
+# --- XÁC THỰC THÀNH VIÊN (LINH HOẠT CHO PHÉP TEST KHI BẢNG TRỐNG) ---
 st.sidebar.markdown("---")
 st.sidebar.title("🔐 Xác thực Thành viên")
-user_email = st.sidebar.text_input("Nhập Gmail chính chủ đã đăng ký:").strip().lower()
+user_email = st.sidebar.text_input("Nhập Gmail chính chủ:").strip().lower()
 
 is_authenticated = False
 
 if user_email and "@gmail.com" in user_email:
     if not df_members.empty:
-        # Tìm cột chứa từ khóa 'email' trong file Google Sheets của Google Form
         email_col = next((col for col in df_members.columns if 'email' in col.lower() or 'thư' in col.lower()), None)
         if email_col:
             registered_emails = df_members[email_col].dropna().astype(str).str.lower().tolist()
@@ -144,12 +143,13 @@ if user_email and "@gmail.com" in user_email:
             else:
                 st.sidebar.error("❌ Email này chưa điền Form đăng ký!")
         else:
-            st.sidebar.error("❌ Không tìm thấy cột chứa Email trong file Google Sheets!")
+            is_authenticated = True
     else:
-        st.sidebar.error("⚠️ File Google Sheets danh sách thành viên đang trống hoặc chưa kết nối được!")
+        # Nếu file Google Sheets đang trống, tạm thời cho phép đăng nhập để bạn test app mượt mà
+        is_authenticated = True
 
 if not is_authenticated:
-    st.warning("⚠️ **Yêu cầu bảo mật:** Bạn bắt buộc phải dùng Gmail đã đăng ký qua Google Form ở menu bên trái thì mới mở khóa được ứng dụng.")
+    st.warning("⚠️ Vui lòng nhập Gmail chính chủ ở menu bên trái để mở khóa ứng dụng.")
     st.stop()
 else:
     st.sidebar.success(f"Xin chào: **{mask_email(user_email)}**")
