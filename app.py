@@ -2,8 +2,10 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 import streamlit.components.v1 as components
+import gspread
+from google.oauth2.service_account import Credentials
 
-# --- CẤU HÌNH GIAO DIỆN & TỐI ƯU MOBILE ---
+# --- CẤU HÌNH GIAO DIỆN ---
 st.set_page_config(
     page_title="Hệ thống Vĩ mô & Tài chính Cộng Đồng",
     page_icon="📈",
@@ -29,13 +31,81 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# --- KẾT NỐI GOOGLE SHEETS ĐỂ ĐỌC & GHI ---
+SHEET_ID = "1K_lTOPWDKqipNWNRSX2IFtm5YF8oILVsfPrluqhhXI4"
+
+def get_gsheet_connection():
+    try:
+        scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+        creds_dict = dict(st.secrets["gcp_service_account"])
+        creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
+        client = gspread.authorize(creds)
+        sheet = client.open_by_key(SHEET_ID)
+        return sheet
+    except Exception as e:
+        return None
+
+# Đọc dữ liệu thành viên và dữ liệu cộng đồng từ Google Sheets
+@st.cache_data(ttl=10)
+def load_data_from_sheets():
+    sheet = get_gsheet_connection()
+    if not sheet:
+        return pd.DataFrame(), pd.DataFrame()
+    try:
+        # Sheet 1: Danh sách thành viên đăng ký (Tab đầu tiên)
+        worksheet_members = sheet.get_worksheet(0)
+        df_members = pd.DataFrame(worksheet_members.get_all_records())
+    except:
+        df_members = pd.DataFrame()
+        
+    try:
+        # Sheet 2: Kho dữ liệu cộng đồng (Tab thứ hai, nếu chưa có sẽ tự tạo)
+        worksheet_community = sheet.worksheet("Community_DB")
+        df_community = pd.DataFrame(worksheet_community.get_all_records())
+    except:
+        df_community = pd.DataFrame(columns=["ID", "Thời gian", "Email Thật", "Loại", "Mã CK / Nội dung", "Nhóm ngành", "Kết quả / Đánh giá"])
+        
+    return df_members, df_community
+
+# Hàm ghi/cập nhật dữ liệu lên Google Sheets
+def save_to_gspreadsheet(new_record):
+    sheet = get_gsheet_connection()
+    if not sheet:
+        return False
+    try:
+        try:
+            worksheet = sheet.worksheet("Community_DB")
+        except:
+            # Nếu chưa có tab Community_DB thì tự động tạo mới
+            worksheet = sheet.add_worksheet(title="Community_DB", rows="1000", cols="10")
+            worksheet.append_row(["ID", "Thời gian", "Email Thật", "Loại", "Mã CK / Nội dung", "Nhóm ngành", "Kết quả / Đánh giá"])
+            
+        records = worksheet.get_all_records()
+        record_id = new_record["ID"]
+        
+        # Kiểm tra xem ID (Email + Mã CK) đã tồn tại chưa để cập nhật (Sửa) hay thêm mới
+        row_index = None
+        for idx, row in enumerate(records):
+            if str(row.get("ID")) == str(record_id):
+                row_index = idx + 2 # vì dòng 1 là header
+                break
+                
+        row_values = list(new_record.values())
+        if row_index:
+            worksheet.update(f"A{row_index}:G{row_index}", [row_values])
+        else:
+            worksheet.append_row(row_values)
+        return True
+    except Exception as e:
+        st.error(f"Lỗi khi lưu vào Google Sheets: {e}")
+        return False
+
 # --- NHÚNG GOOGLE FORM TRÊN THANH BÊN ---
 st.sidebar.markdown("---")
 with st.sidebar.expander("📝 Chưa có tài khoản? Đăng ký ngay"):
     form_embed_url = "https://docs.google.com/forms/d/e/1FAIpQLSeGyXK_-dnAq4IjHsKaJjKp9O89ziolpuQyvr7sXWCL7fELoA/viewform?embedded=true"
     components.iframe(form_embed_url, height=350, scrolling=True)
 
-# --- HÀM ẨN DANH EMAIL ---
 def mask_email(email):
     if not email or "@" not in email:
         return "Ẩn danh"
@@ -48,38 +118,14 @@ def mask_email(email):
         masked_name = name[:2] + "***" + name[-1]
     return f"{masked_name}@{domain}"
 
-# --- HÀM ĐỌC DANH SÁCH THÀNH VIÊN TỪ GOOGLE SHEETS ---
-@st.cache_data(ttl=30)
-def load_members():
-    try:
-        sheet_url = "https://docs.google.com/spreadsheets/d/1K_lTOPWDKqipNWNRSX2IFtm5YF8oILVsfPrluqhhXI4/gviz/tq?tqx=out:csv"
-        df = pd.read_csv(sheet_url)
-        return df
-    except Exception:
-        return pd.DataFrame()
-
-# --- KHỞI TẠO KHO LƯU TRỮ TẠM ---
-if 'community_db' not in st.session_state:
-    st.session_state['community_db'] = [
-        {
-            "ID": "tuyen.duc@gmail.com_HPG",
-            "Thời gian": "2026-10-15 09:30", 
-            "Email Thật (Quản lý nội bộ)": "tuyen.duc@gmail.com", 
-            "Loại": "Phân tích BCTC",
-            "Mã CK / Nội dung": "HPG", 
-            "Nhóm ngành": "Doanh nghiệp Thường", 
-            "Kết quả / Đánh giá": "F-Score: 7/9 | M-Score: -2.15 (An toàn)"
-        }
-    ]
+df_members, df_community = load_data_from_sheets()
 
 # --- ĐĂNG NHẬP XÁC THỰC ---
 st.sidebar.markdown("---")
 st.sidebar.title("🔐 Xác thực Thành viên")
 user_email = st.sidebar.text_input("Nhập Gmail chính chủ:").strip().lower()
 
-df_members = load_members()
 is_authenticated = False
-
 if user_email and "@gmail.com" in user_email:
     if not df_members.empty:
         email_col = next((col for col in df_members.columns if 'email' in col.lower()), None)
@@ -95,7 +141,7 @@ if user_email and "@gmail.com" in user_email:
         is_authenticated = True
 
 if not is_authenticated:
-    st.warning("⚠️ Vui lòng nhập Gmail chính chủ đã đăng ký ở menu bên trái (hoặc bấm mũi tên `>` trên điện thoại) để mở khóa ứng dụng.")
+    st.warning("⚠️ Vui lòng nhập Gmail chính chủ đã đăng ký ở menu bên trái để mở khóa ứng dụng.")
     st.stop()
 else:
     st.sidebar.success(f"Xin chào: **{mask_email(user_email)}**")
@@ -111,63 +157,55 @@ else:
 # =====================================================================
 if menu == "📊 Phần 1: Dashboard Vĩ Mô & Market Timing":
     st.title("📊 Dashboard Vĩ Mô & Market Timing")
-    st.markdown("Đánh giá chu kỳ dòng tiền vĩ mô thực tế để đưa ra quyết định hành động chiến lược.")
     
     with st.container(border=True):
         col_v1, col_v2 = st.columns(2)
         with col_v1:
             laisuat = st.selectbox("1. Xu hướng Lãi suất & OMO:", ["-- Chọn trạng thái --", "Giảm / Nới lỏng (Tốt)", "Đi ngang (Bình thường)", "Tăng / Thắt chặt (Xấu)"])
-            tygia = st.selectbox("2. Biến động Tỷ giá USD/VND (So với biên độ NHNN):", ["-- Chọn trạng thái --", "Trượt giá chậm, trong biên độ kiểm soát (Tốt)", "Tăng sốc, áp sát trần biên độ / Chợ đen biến động mạnh (Xấu)"])
+            tygia = st.selectbox("2. Biến động Tỷ giá USD/VND:", ["-- Chọn trạng thái --", "Trượt giá chậm, trong biên độ kiểm soát (Tốt)", "Tăng sốc, áp sát trần biên độ (Xấu)"])
         with col_v2:
-            dxy = st.selectbox("3. Chỉ số Sức mạnh Đồng Đô la (DXY):", ["-- Chọn trạng thái --", "Xu hướng giảm / Dưới trung bình dài hạn (Tốt)", "Đi ngang / Vùng trung tính (Bình thường)", "Bứt phá vượt kháng cự mạnh / Đỉnh dài hạn (Xấu)"])
-            nhnn = st.selectbox("4. Động thái của NHNN:", ["-- Chọn trạng thái --", "Bơm tiền / Mua lại ngoại tệ tăng dự trữ (Tốt)", "Không can thiệp (Bình thường)", "Hút Tín phiếu / Bán ngoại tệ can thiệp mạnh (Xấu)"])
+            dxy = st.selectbox("3. Chỉ số Sức mạnh Đồng Đô la (DXY):", ["-- Chọn trạng thái --", "Xu hướng giảm / Dưới trung bình (Tốt)", "Đi ngang / Vùng trung tính (Bình thường)", "Bứt phá vượt kháng cự mạnh (Xấu)"])
+            nhnn = st.selectbox("4. Động thái của NHNN:", ["-- Chọn trạng thái --", "Bơm tiền / Mua lại ngoại tệ (Tốt)", "Không can thiệp (Bình thường)", "Hút Tín phiếu / Bán ngoại tệ (Xấu)"])
             
     if st.button("🔍 ĐÁNH GIÁ THỊ TRƯỜNG TOÀN DIỆN", type="primary"):
         if "-- Chọn trạng thái --" in [laisuat, tygia, dxy, nhnn]:
-            st.warning("⚠️ Vui lòng chọn đầy đủ 4 thông số vĩ mô trước khi đánh giá!")
+            st.warning("⚠️ Vui lòng chọn đầy đủ 4 thông số!")
         else:
             if "Xấu" in laisuat or "Xấu" in tygia or "Xấu" in dxy or "Hút Tín phiếu" in nhnn:
                 st.session_state['macro_result'] = "🔴 ĐÈN ĐỎ (Defense / Retreat)"
-                st.error(f"### {st.session_state['macro_result']}\n**Cảnh báo rủi ro vĩ mô!**\n\n**Hành động:** PHÒNG THỦ TUYỆT ĐỐI. Bán hết cổ phiếu đầu cơ. Đưa tỷ lệ tiền mặt về mức an toàn cao.")
+                st.error("### 🔴 ĐÈN ĐỎ\n**Hành động:** PHÒNG THỦ TUYỆT ĐỐI. Tỷ lệ tiền mặt 80-100%.")
             elif "Giảm" in laisuat and "Trượt giá chậm" in tygia and "Xu hướng giảm" in dxy and "Bơm tiền" in nhnn:
                 st.session_state['macro_result'] = "🟢 ĐÈN XANH (All-in / Attack)"
-                st.success(f"### {st.session_state['macro_result']}\n**Vĩ mô ủng hộ tuyệt đối!**\n\n**Hành động:** TẤN CÔNG TỔNG LỰC. Đánh tài sản lớn, tận dụng tối đa chu kỳ nới lỏng tiền tệ.")
+                st.success("### 🟢 ĐÈN XANH\n**Hành động:** TẤN CÔNG TỔNG LỰC. Tối đa hóa tài sản.")
             else:
                 st.session_state['macro_result'] = "🟡 ĐÈN VÀNG (Guerrilla / Hit & Run)"
-                st.warning(f"### {st.session_state['macro_result']}\n**Vĩ mô hỗn hợp, biến động biên độ.**\n\n**Hành động:** ĐÁNH DU KÍCH. Tỷ trọng linh hoạt, đánh ngắn T+.")
+                st.warning("### 🟡 ĐÈN VÀNG\n**Hành động:** ĐÁNH DU KÍCH. Tỷ trọng linh hoạt, đánh ngắn T+.")
 
     if 'macro_result' in st.session_state:
         st.markdown("---")
-        if st.button("💾 Lưu kết quả vĩ mô vào Kho Cộng Đồng", type="secondary"):
+        if st.button("💾 Lưu kết quả vĩ mô thẳng lên Google Sheets", type="secondary"):
             rec_id = f"{user_email}_MACRO"
-            idx = next((i for i, item in enumerate(st.session_state['community_db']) if item['ID'] == rec_id), None)
             record = {
                 "ID": rec_id, 
                 "Thời gian": datetime.now().strftime("%Y-%m-%d %H:%M"), 
-                "Email Thật (Quản lý nội bộ)": user_email, 
+                "Email Thật": user_email, 
                 "Loại": "Nhận định Vĩ mô", 
                 "Mã CK / Nội dung": "VĨ MÔ TOÀN CẢNH", 
                 "Nhóm ngành": "Market Timing", 
                 "Kết quả / Đánh giá": st.session_state['macro_result']
             }
-            if idx is not None: 
-                st.session_state['community_db'][idx] = record
-            else: 
-                st.session_state['community_db'].insert(0, record)
-            st.success("✅ Đã lưu kết quả vĩ mô thành công!")
+            if save_to_gspreadsheet(record):
+                st.success("✅ Đã lưu kết quả vĩ mô thành công lên Google Sheets!")
+                st.rerun()
 
 # =====================================================================
-# PHẦN 2: CHẤM ĐIỂM BCTC (F-SCORE & M-SCORE ĐẦY ĐỦ CÔNG THỨC)
+# PHẦN 2: CHẤM ĐIỂM BCTC (F-SCORE & M-SCORE)
 # =====================================================================
 elif menu == "🔍 Phần 2: Chấm điểm BCTC (F-Score & M-Score)":
     st.title("🔍 Chấm Điểm BCTC Doanh Nghiệp")
-    st.markdown(f"Thành viên: **{mask_email(user_email)}** | Tích hợp **Piotroski F-Score (9 Tiêu chí)** & **Beneish M-Score (8 biến gốc)**")
+    ticker_symbol = st.text_input("Mã Cổ Phiếu (VD: HPG, VNM):", "HPG").upper()
     
-    ticker_symbol = st.text_input("Mã Cổ Phiếu / Doanh Nghiệp (VD: HPG, VNM):", "HPG").upper()
-    
-    st.markdown("---")
     col_t, col_t1 = st.columns(2)
-    
     with col_t:
         st.subheader("🟢 NĂM NAY (Năm t)")
         rev_t = st.number_input("Doanh thu thuần (Sales_t)", value=10000.0)
@@ -199,10 +237,7 @@ elif menu == "🔍 Phần 2: Chấm điểm BCTC (F-Score & M-Score)":
         ta_t1 = st.number_input("Tổng tài sản t-1", value=11000.0)
         shares_t1 = st.number_input("Số lượng cổ phiếu t-1", value=1000.0)
 
-    st.markdown("---")
     safe_div = lambda n, d: n / d if d != 0 else 0
-
-    # Công thức Beneish M-Score chuẩn gốc 8 biến
     dsri = safe_div(safe_div(rec_t, rev_t), safe_div(rec_t1, rev_t1))
     gm_t1 = safe_div(rev_t1 - cogs_t1, rev_t1)
     gm_t = safe_div(rev_t - cogs_t, rev_t)
@@ -219,20 +254,13 @@ elif menu == "🔍 Phần 2: Chấm điểm BCTC (F-Score & M-Score)":
     tata = safe_div(ni_t - cfo_t, ta_t)
 
     m_score = -4.84 + (0.920 * dsri) + (0.528 * gmi) + (0.404 * aqi) + (0.892 * sgi) + (0.115 * depi) - (0.172 * sgai) + (-0.327 * lvgi) + (4.679 * tata)
-
-    # Công thức Piotroski F-Score chuẩn gốc 9 tiêu chí
     roa_t = safe_div(ni_t, (ta_t + ta_t1) / 2)
     roa_t1 = safe_div(ni_t1, ta_t1)
     f_score = sum([
-        1 if ni_t > 0 else 0,
-        1 if cfo_t > 0 else 0,
-        1 if roa_t > roa_t1 else 0,
-        1 if cfo_t > ni_t else 0,
-        1 if safe_div(ltd_t, ta_t) < safe_div(ltd_t1, ta_t1) else 0,
-        1 if safe_div(ca_t, cl_t) > safe_div(ca_t1, cl_t1) else 0,
-        1 if shares_t <= shares_t1 else 0,
-        1 if (gm_t - gm_t1) > 0 else 0,
-        1 if (safe_div(rev_t, ta_t) - safe_div(rev_t1, ta_t1)) > 0 else 0
+        1 if ni_t > 0 else 0, 1 if cfo_t > 0 else 0, 1 if roa_t > roa_t1 else 0,
+        1 if cfo_t > ni_t else 0, 1 if safe_div(ltd_t, ta_t) < safe_div(ltd_t1, ta_t1) else 0,
+        1 if safe_div(ca_t, cl_t) > safe_div(ca_t1, cl_t1) else 0, 1 if shares_t <= shares_t1 else 0,
+        1 if (gm_t - gm_t1) > 0 else 0, 1 if (safe_div(rev_t, ta_t) - safe_div(rev_t1, ta_t1)) > 0 else 0
     ])
 
     col_res1, col_res2 = st.columns(2)
@@ -240,39 +268,36 @@ elif menu == "🔍 Phần 2: Chấm điểm BCTC (F-Score & M-Score)":
     col_res2.metric("Piotroski F-Score", f"{f_score} / 9")
 
     record_id = f"{user_email}_{ticker_symbol}"
-    if st.button("💾 Lưu / Cập nhật bài phân tích BCTC vào Kho Cộng Đồng", type="primary"):
+    if st.button("💾 Lưu phân tích BCTC thẳng lên Google Sheets", type="primary"):
         result_text = f"F-Score: {f_score}/9 | M-Score: {m_score:.2f}"
-        existing_idx = next((i for i, item in enumerate(st.session_state['community_db']) if item['ID'] == record_id), None)
-        
-        new_record = {
+        record = {
             "ID": record_id,
             "Thời gian": datetime.now().strftime("%Y-%m-%d %H:%M"),
-            "Email Thật (Quản lý nội bộ)": user_email,
+            "Email Thật": user_email,
             "Loại": "Phân tích BCTC",
             "Mã CK / Nội dung": ticker_symbol,
             "Nhóm ngành": "Doanh nghiệp Thường",
             "Kết quả / Đánh giá": result_text
         }
-        
-        if existing_idx is not None:
-            st.session_state['community_db'][existing_idx] = new_record
-            st.success(f"✅ Đã cập nhật bài phân tích mã **{ticker_symbol}** thành công!")
-        else:
-            st.session_state['community_db'].insert(0, new_record)
-            st.success(f"✅ Đã lưu mới mã **{ticker_symbol}** vào kho cộng đồng!")
+        if save_to_gspreadsheet(record):
+            st.success(f"✅ Đã lưu phân tích mã **{ticker_symbol}** lên Google Sheets thành công!")
+            st.rerun()
 
 # =====================================================================
 # PHẦN 3: KHO DỮ LIỆU CỘNG ĐỒNG (BẢO MẬT ẨN DANH)
 # =====================================================================
 elif menu == "📚 Phần 3: Kho Dữ liệu Cộng Đồng (Ẩn danh)":
     st.title("📚 Kho Dữ liệu & Tra cứu Cộng Đồng")
-    st.markdown("Tổng hợp báo cáo tài chính và nhận định vĩ mô từ các thành viên (Đã bảo mật ẩn danh).")
+    st.markdown("Dữ liệu được đồng bộ trực tiếp từ Google Sheets của hệ thống.")
     
-    df_show = pd.DataFrame(st.session_state['community_db'])
-    if not df_show.empty:
-        df_display = df_show.copy()
-        df_display['Thành viên'] = df_display['Email Thật (Quản lý nội bộ)'].apply(mask_email)
-        df_final = df_display[['Thời gian', 'Thành viên', 'Loại', 'Mã CK / Nội dung', 'Nhóm ngành', 'Kết quả / Đánh giá']]
-        st.dataframe(df_final, use_container_width=True)
+    if not df_community.empty:
+        df_display = df_community.copy()
+        email_field = next((col for col in df_display.columns if 'email' in col.lower() or 'thật' in col.lower()), None)
+        if email_field:
+            df_display['Thành viên'] = df_display[email_field].apply(mask_email)
+            display_cols = [c for c in ['Thời gian', 'Thành viên', 'Loại', 'Mã CK / Nội dung', 'Nhóm ngành', 'Kết quả / Đánh giá'] if c in df_display.columns]
+            st.dataframe(df_display[display_cols], use_container_width=True)
+        else:
+            st.dataframe(df_display, use_container_width=True)
     else:
-        st.info("Chưa có dữ liệu trong kho.")
+        st.info("Chưa có dữ liệu trong kho cộng đồng trên Google Sheets.")
