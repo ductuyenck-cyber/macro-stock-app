@@ -30,18 +30,18 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- CẤU HÌNH GOOGLE SHEETS & WEB APP API CỦA BẠN ---
+# --- CẤU HÌNH GOOGLE SHEETS & WEB APP API ---
 SHEET_ID = "1zeaMCtBq0gGY_ojKCkGugQATs6DwQgHD3V9aJSTobkE"
 WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzoxnstRuSKCek9TXrqoHGPly-ercYvpSRNDw9E-XLeEKp7U2BhKF0R-avbgdOdC7wU/exec"
 
-# --- ĐỌC DỮ LIỆU TỪ GOOGLE SHEETS (ĐÃ CỐ ĐỊNH TAB THÀNH VIÊN GID=537221443) ---
+# --- ĐỌC DỮ LIỆU TỪ GOOGLE SHEETS (TAB FORM & TAB COMMUNITY) ---
 @st.cache_data(ttl=5)
 def load_data_from_sheets():
     try:
-        # Tab 1: Danh sách thành viên từ Google Form (Đúng GID chuẩn của bạn)
+        # Tab 1: Phản hồi từ Google Form (Đúng GID 537221443 của bạn)
         members_url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&gid=537221443"
         df_members = pd.read_csv(members_url)
-    except Exception:
+    except Exception as e:
         df_members = pd.DataFrame()
         
     try:
@@ -53,7 +53,7 @@ def load_data_from_sheets():
         
     return df_members, df_community
 
-# --- HÀM GHI DỮ LIỆU CÓ KIỂM TRA LỖI PHẢN HỒI TỪ APPS SCRIPT ---
+# --- HÀM GHI DỮ LIỆU THÔNG QUA APPS SCRIPT ---
 def save_to_gspreadsheet(new_record):
     try:
         payload = {
@@ -67,16 +67,12 @@ def save_to_gspreadsheet(new_record):
         }
         response = requests.post(WEB_APP_URL, json=payload, timeout=15)
         if response.status_code == 200:
-            try:
-                res_json = response.json()
-                if res_json.get("status") == "success":
-                    st.cache_data.clear() # Xóa cache để cập nhật ngay lập tức
-                    return True
-                else:
-                    st.error(f"Google Apps Script báo lỗi: {res_json.get('message')}")
-                    return False
-            except:
-                st.error("Lỗi: Web App đang trả về trang đăng nhập Google. Hãy kiểm tra lại quyền truy cập (Who has access phải là Anyone).")
+            res_json = response.json()
+            if res_json.get("status") == "success":
+                st.cache_data.clear() # Xóa cache để cập nhật ngay lập tức
+                return True
+            else:
+                st.error(f"Google Apps Script báo lỗi: {res_json.get('message')}")
                 return False
         else:
             st.error(f"Lỗi kết nối HTTP: {response.status_code}")
@@ -85,10 +81,10 @@ def save_to_gspreadsheet(new_record):
         st.error(f"Lỗi ngoại lệ khi gọi API: {e}")
         return False
 
-# --- NHÚNG GOOGLE FORM TRỰC TIẾP TRÊN THANH BÊN ---
+# --- NHÚNG GOOGLE FORM TRÊN THANH BÊN ---
 st.sidebar.markdown("---")
 with st.sidebar.expander("📝 Chưa có tài khoản? Đăng ký ngay"):
-    st.markdown("Điền thông tin bên dưới:")
+    st.markdown("Điền thông tin Google Form bên dưới:")
     form_embed_url = "https://docs.google.com/forms/d/e/1FAIpQLSeGyXK_-dnAq4IjHsKaJjKp9O89ziolpuQyvr7sXWCL7fELoA/viewform?embedded=true"
     components.iframe(form_embed_url, height=350, scrolling=True)
 
@@ -106,7 +102,7 @@ def mask_email(email):
 
 df_members, df_community = load_data_from_sheets()
 
-# --- XÁC THỰC THÀNH VIÊN (CHÍNH XÁC TUYỆT ĐỐI THEO FILE FORM) ---
+# --- XÁC THỰC THÀNH VIÊN (TỐI ƯU TÌM KIẾM CỘT EMAIL) ---
 st.sidebar.markdown("---")
 st.sidebar.title("🔐 Xác thực Thành viên")
 user_email = st.sidebar.text_input("Nhập Gmail chính chủ đã đăng ký:").strip().lower()
@@ -115,18 +111,21 @@ is_authenticated = False
 
 if user_email and "@gmail.com" in user_email:
     if not df_members.empty:
-        # Tự động tìm cột chứa từ khóa 'email' hoặc 'thư' trong Google Form
-        email_col = next((col for col in df_members.columns if 'email' in col.lower() or 'thư' in col.lower()), None)
+        # Làm sạch tên cột để dễ dàng tìm kiếm từ khóa 'email' hoặc 'thư'
+        df_members.columns = [str(c).strip().lower() for c in df_members.columns]
+        email_col = next((col for col in df_members.columns if 'email' in col or 'thư' in col), None)
+        
         if email_col:
             registered_emails = df_members[email_col].dropna().astype(str).str.lower().tolist()
             if user_email in registered_emails:
                 is_authenticated = True
             else:
-                st.sidebar.error("❌ Email này chưa điền Form đăng ký!")
+                st.sidebar.error(f"❌ Email '{user_email}' chưa điền Form đăng ký!")
         else:
-            st.sidebar.error("❌ Không tìm thấy cột chứa Email trong file Google Sheets!")
+            # Nếu vẫn không tìm thấy cột chứa email, hiển thị các cột hiện có để debug nhẹ
+            st.sidebar.error(f"❌ Không tìm thấy cột email! Các cột trong sheet: {list(df_members.columns)}")
     else:
-        st.sidebar.warning("⚠️ Danh sách thành viên đang trống. Hãy điền thử 1 lần vào Google Form trước!")
+        st.sidebar.warning("⚠️ Danh sách thành viên từ Google Form đang trống. Hãy điền thử 1 lần vào Form!")
 
 if not is_authenticated:
     st.warning("⚠️ **Bảo mật:** Vui lòng nhập Gmail chính chủ đã đăng ký qua Google Form ở menu bên trái để mở khóa ứng dụng.")
