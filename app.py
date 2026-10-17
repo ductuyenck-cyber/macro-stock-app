@@ -592,15 +592,36 @@ def sector_readout(data):
 
 def show_sector_readout(data):
  report=sector_readout(data)
- st.subheader('Diễn giải nhanh từ số liệu đã nhập')
- st.info('Sức khỏe tài chính: '+report['health'])
- st.caption(report['basis'])
- st.warning('Kiểm tra BCTC: '+report['manipulation'])
- st.caption(f'Đã thực hiện {report["tested"]}/{report["total_checks"]} điều kiện kiểm tra. Đây là kiểm tra tín hiệu tài chính, không phải mô hình phát hiện gian lận. Cần đọc báo cáo kiểm toán và thuyết minh.')
- if report['checks']:
-  with st.expander('Vì sao có cảnh báo / cần đọc gì trong BCTC?'):
-   st.dataframe(pd.DataFrame(report['checks']),hide_index=True,width='stretch')
+ st.subheader('Kết quả dễ hiểu')
+ labels={'Khỏe theo bộ tiêu chí tham khảo':'Có nhiều tín hiệu thuận lợi',
+ 'Trung bình / tín hiệu đan xen':'Tín hiệu đan xen',
+ 'Yếu theo bộ tiêu chí tham khảo':'Có nhiều điểm cần chú ý'}
+ st.info('Tình hình tài chính: '+labels.get(report['health'],report['health']))
+ st.markdown('**Điểm đáng chú ý**')
+ if report['flags']:
+  for message in report['flags'][:3]:st.write('• '+message)
+ elif report['tested']:
+  st.write('Chưa thấy cảnh báo trong các điều kiện đã kiểm tra. Cần xem thêm dữ liệu còn thiếu và thuyết minh.')
+ else:st.write('Hãy nhập số liệu hoặc nạp minh họa để xem kết quả. Chưa có đủ số liệu cho các kiểm tra.')
+ if len(report['flags'])>3:st.caption('Còn dấu hiệu khác trong phần chi tiết bên dưới.')
+ missing=[FIN_FIELDS[data['kind']][k][0] for k,v in data['periods']['t'].items() if v is None]
+ st.caption(f'Số liệu năm hiện tại: đã nhập {len(FIN_FIELDS[data["kind"]])-len(missing)}/{len(FIN_FIELDS[data["kind"]])} khoản mục. Đây là độ đầy đủ đầu vào, không phải độ tin cậy của báo cáo.')
+ st.warning('Chất lượng báo cáo: '+report['manipulation'])
+ with st.expander('Vì sao có nhận định này và còn thiếu gì?'):
+  st.write(report['basis'])
+  st.caption(f'Hoàn tất {report["tested"]}/{report["total_checks"]} điều kiện kiểm tra. Không phải mô hình phát hiện gian lận.')
+  if missing:st.write('Chưa nhập năm hiện tại: '+', '.join(missing)+'. Chỉ bổ sung khi tìm được số liệu đúng; không điền 0 thay ô trống.')
+  if report['checks']:st.dataframe(pd.DataFrame(report['checks']),hide_index=True,width='stretch')
  return report
+
+
+def simple_input_help():
+ st.markdown('**1. Chọn nhóm ở thanh bên → 2. Nhập số hoặc dùng Excel → 3. Đọc kết quả bên dưới**')
+ st.caption('Chỉ dùng BCTC cả năm, cùng đơn vị và cùng phạm vi hai năm. Chưa biết thì để trống; chỉ nhập 0 khi báo cáo xác nhận bằng 0. Bấm dấu ? cạnh ô để xem cách lấy số.')
+ with st.expander('Tìm số ở đâu? Hướng dẫn cho người mới'):
+  st.write('Bảng cân đối kế toán: tổng tài sản, vốn chủ, tiền gửi, cho vay và nợ vay cuối năm. Báo cáo kết quả kinh doanh: lợi nhuận và thu nhập/chi phí cả năm. Thuyết minh: nợ xấu, dự phòng và chi tiết khoản mục.')
+  st.write('t là năm đang phân tích; t−1 là năm liền trước. Số đầu kỳ là số cuối năm t−2, dùng tính bình quân. Chọn cùng phạm vi hợp nhất hoặc riêng lẻ. Đổi đơn vị trong app không tự đổi các con số.')
+  st.write('Có thể nhập trước phần cơ bản. Phần bổ sung giúp tính thêm chỉ tiêu; thiếu số liệu sẽ được báo rõ, không tự thay bằng 0.')
 
 
 def financial_export_with_readout(data,result=None):
@@ -638,13 +659,14 @@ def bank_dashboard_page():
  .bank-card{background:#0b1220;color:#e2e8f0;border:1px solid #334155;border-radius:16px;padding:22px;margin:12px 0}
  .bank-card h3{color:#e2e8f0!important;font-size:17px!important}.bank-value{font-size:52px;line-height:1.2;font-weight:800;margin:10px 0}
  .bank-note{font-size:12px;color:#cbd5e1}.bank-row{padding:8px 0;border-bottom:1px solid #334155;font-size:12px;display:flex;justify-content:space-between;gap:10px}
- </style><div class="bank-head"><h1>Đánh giá sức khỏe &amp; cảnh báo ngân hàng</h1><p>9 tiêu chí tham khảo · FR-Index tùy chỉnh · Số liệu BCTC có nguồn</p></div>''',unsafe_allow_html=True)
+ </style><div class="bank-head"><h1>Đánh giá sức khỏe &amp; cảnh báo ngân hàng</h1><p>Nhập số liệu · Đọc nhận định · Xem điều cần chú ý</p></div>''',unsafe_allow_html=True)
  storage='finance_bank';revkey=storage+'_revision'
  if storage not in st.session_state:st.session_state[storage]=financial_blank('bank')
  if revkey not in st.session_state:st.session_state[revkey]=0
  if 'bank_saved' not in st.session_state:st.session_state.bank_saved={}
  def load(d):st.session_state[storage]=deepcopy(d);st.session_state[revkey]+=1
- with st.expander('Tạo mới, minh họa hoặc nhập Excel',expanded=False):
+ simple_input_help()
+ with st.expander('Bắt đầu: tải mẫu, nhập Excel hoặc xem minh họa',expanded=True):
   a,b,c=st.columns(3)
   if a.button('Làm mới',key='board_new'):load(financial_blank('bank'));st.rerun()
   if b.button('Nạp minh họa',key='board_demo'):load(financial_demo('bank'));st.rerun()
@@ -667,16 +689,16 @@ def bank_dashboard_page():
   m['demo']=st.checkbox('Đây là dữ liệu minh họa',value=m['demo'],key=key('demo'))
  if m['demo']:st.warning('DỮ LIỆU MINHỌA — không phải BCTC thật của mã đang hiển thị.')
  st.caption('Các ngưỡng 1%, 12%, 10%, 2%, 70–85%, 5 điểm là quy ước nội bộ từ mẫu của bạn, không phải chuẩn ngành/pháp lý. Chỉ nhập BCTC cả năm; để trống khi chưa biết.')
- left,right=st.columns([1.4,1],gap='large')
+ left=st.container()
  primary=['assets','equity','loans','deposits','npl','loan_reserves','net_income','net_interest','operating_income','operating_cost']
  def field(col,y,k):
   old=data['periods'][y][k]
   data['periods'][y][k]=col.number_input(BANK_FIELDS[k][0],value=float(old) if old is not None else None,format='%.4f',help=BANK_FIELDS[k][1],key=key(y+'_'+k))
  with left:
-  st.subheader('Nhập số liệu hai năm')
+  st.subheader('Nhập cơ bản — hai năm để so sánh')
   c1,c2=st.columns(2);c1.markdown(f'**NĂM t — {m["year"]}**');c2.markdown(f'**NĂM t−1 — {m["year"]-1}**')
   for k in primary:field(c1,'t',k);field(c2,'t1',k)
-  with st.expander('Dữ liệu NIM và số đầu kỳ — cần để đủ 9 tiêu chí',expanded=True):
+  with st.expander('Bổ sung: NIM và số đầu kỳ (để tính thêm chỉ tiêu)',expanded=False):
    st.caption('NIM dùng tài sản sinh lãi bình quân, không dùng dư nợ cho vay. Nhập NIM công bố cả hai năm hoặc bổ sung tài sản sinh lãi ba mốc. ROA so sánh cần tổng tài sản cuối t−2.')
    for k in ['earning_assets','nim_reported']:
     x,y=st.columns(2);x.caption('Năm t');y.caption('Năm t−1');field(x,'t',k);field(y,'t1',k)
@@ -686,7 +708,8 @@ def bank_dashboard_page():
    x,y=st.columns(2);x.caption('Năm t');y.caption('Năm t−1')
    for k in others:field(x,'t',k);field(y,'t1',k)
  model=bank_dashboard_model(data);base=financial_calculate(data)
- with right:
+ show_sector_readout(data)
+ with st.expander('Xem phân tích chi tiết — ngân hàng',expanded=False):
   risk=model['risk_score'];health=model['health_score']
   risk_color='#fbbf24' if risk is None else '#fb7185' if risk>5 else '#60a5fa'
   risk_value='—' if risk is None else f'{risk:.1f}'
@@ -706,7 +729,6 @@ def bank_dashboard_page():
   with st.expander('Chi tiết tiêu chí và từng đóng góp FR'):
    st.dataframe(pd.DataFrame(model['health_rows']),hide_index=True,width='stretch');st.dataframe(pd.DataFrame(model['risk_rows']),hide_index=True,width='stretch')
    st.caption('Sửa so với HTML: phần thiếu bao phủ = max(0, 1 − min(LLR,1.5)) × 15, không để dự phòng cao tạo đóng góp âm bù cảnh báo khác. Nếu một thành phần chưa xác định, không trả tổng FR.')
- show_sector_readout(data)
  with st.expander('Toàn bộ chỉ tiêu ngân hàng và lưu ý dữ liệu'):
   for n in base['notes']:st.warning(n)
   st.dataframe(pd.DataFrame(base['rows']),hide_index=True,width='stretch')
@@ -752,7 +774,7 @@ def financial_page(kind):
  if revkey not in st.session_state:st.session_state[revkey]=0
  def load(d):st.session_state[storage]=deepcopy(d);st.session_state[revkey]+=1
  st.title('Phân tích '+FIN_NAMES[kind].lower())
- st.caption('Chỉ tiêu đặc thù ngành • Dữ liệu năm nhập tay/Excel • Không áp dụng F-Score/M-Score cho nhóm này')
+ simple_input_help()
  with st.expander('Tạo mới / minh họa / nhập Excel',expanded=True):
   a,b,c=st.columns(3)
   if a.button('Tạo bản mới',key=storage+'_new',width='stretch'):load(financial_blank(kind));st.rerun()
@@ -770,32 +792,40 @@ def financial_page(kind):
  units=['VND','Nghìn VND','Triệu VND','Tỷ VND'];m['unit']=c.selectbox('Đơn vị số liệu BCTC',units,index=units.index(m['unit']),key=key('unit'))
  scopes=['Hợp nhất','Riêng lẻ'];m['scope']=st.selectbox('Phạm vi số liệu BCTC',scopes,index=scopes.index(m['scope']),key=key('scope'))
  m['source']=st.text_area('Nguồn BCTC, link và trang/thuyết minh',m['source'],max_chars=3000,key=key('source'))
- m['capital_source']=st.text_input('Nguồn, kỳ, phạm vi riêng lẻ/hợp nhất và chuẩn của CAR / tỷ lệ vốn khả dụng công bố',m['capital_source'],max_chars=3000,key=key('capital_source'))
- m['price_source']=st.text_input('Ngày giá t, ngày giá t−1; nguồn giá/EPS/BVPS và điều chỉnh cổ phiếu',m['price_source'],max_chars=3000,key=key('price_source'))
- m['demo']=st.checkbox('Đây là dữ liệu minh họa',m['demo'],key=key('demo'))
+ with st.expander('Thông tin bổ sung: nguồn công bố và dữ liệu minh họa'):
+  m['capital_source']=st.text_input('Nguồn, kỳ, phạm vi riêng lẻ/hợp nhất và chuẩn của CAR / tỷ lệ vốn khả dụng công bố',m['capital_source'],max_chars=3000,key=key('capital_source'))
+  m['price_source']=st.text_input('Ngày giá t, ngày giá t−1; nguồn giá/EPS/BVPS và điều chỉnh cổ phiếu',m['price_source'],max_chars=3000,key=key('price_source'))
+  m['demo']=st.checkbox('Đây là dữ liệu minh họa',m['demo'],key=key('demo'))
  st.info('Chỉ nhập BCTC cả năm. Ô trống là chưa biết; 0 là đã xác minh bằng 0. Giá/EPS/BVPS luôn VND/cp; CAR/NIM/vốn khả dụng công bố nhập theo %, ví dụ 12.5 = 12,5%. Đổi nhãn đơn vị không tự chuyển số.')
- tabs=st.tabs([f'Năm {m["year"]}',f'Năm {m["year"]-1}',f'Số đầu kỳ từ cuối {m["year"]-2}'])
- for i,y in enumerate(YEARS):
-  with tabs[i]:
-   keys=list(FIN_FIELDS[kind]) if y!='t2' else ['assets','equity']+(['loans','earning_assets'] if kind=='bank' else ['margin_loans'])
-   cols=st.columns(2)
-   for n,k in enumerate(keys):
-    old=data['periods'][y][k]
-    data['periods'][y][k]=cols[n%2].number_input(FIN_FIELDS[kind][k][0],value=float(old) if old is not None else None,format='%.4f',help=FIN_FIELDS[kind][k][1],key=key(y+'_'+k))
+ def input_fields(y,keys):
+  cols=st.columns(2)
+  for n,k in enumerate(keys):
+   old=data['periods'][y][k]
+   data['periods'][y][k]=cols[n%2].number_input(FIN_FIELDS[kind][k][0],value=float(old) if old is not None else None,format='%.4f',help=FIN_FIELDS[kind][k][1],key=key(y+'_'+k))
+ basic=['assets','equity','net_income','liabilities','borrowings','margin_loans','liquid_assets','current_liabilities']
+ st.subheader('Nhập cơ bản — hai năm để so sánh')
+ tabs=st.tabs([f'Năm {m["year"]}',f'Năm {m["year"]-1}'])
+ for i,y in enumerate(['t','t1']):
+  with tabs[i]:input_fields(y,basic)
+ with st.expander('Bổ sung: số đầu kỳ, cơ cấu lợi nhuận và định giá',expanded=False):
+  extra=st.tabs([f'Bổ sung {m["year"]}',f'Bổ sung {m["year"]-1}',f'Số đầu kỳ: cuối {m["year"]-2}'])
+  for i,y in enumerate(YEARS):
+   with extra[i]:input_fields(y,[k for k in FIN_FIELDS[kind] if k not in basic] if y!='t2' else ['assets','equity','margin_loans'])
  result=financial_calculate(data)
  show_sector_readout(data)
- st.subheader('Bảng chỉ tiêu và so sánh hai năm')
- for n in result['errors']:st.error(n)
- for n in result['notes']:st.warning(n)
- if not m['capital_source'].strip():st.caption('Chưa ghi nguồn/phạm vi cho CAR hoặc vốn khả dụng; giá trị nhập tay chưa được xác minh.')
- if result['rows']:
-  rows=[]
-  def fmt(v,unit):return 'Chưa tính được' if v is None else f'{v*100:.2f}%' if unit=='%' else f'{v:.3f}'
-  for r in result['rows']:
-   row=dict(r);unit=r['Đơn vị'];row['t']=fmt(r['t'],unit);row['t1']=fmt(r['t1'],unit)
-   row['Thay đổi']='—' if r['Thay đổi'] is None else (f'{r["Thay đổi"]*100:+.2f} điểm %' if unit=='%' else f'{r["Thay đổi"]:+.3f} lần');rows.append(row)
-  st.dataframe(pd.DataFrame(rows),hide_index=True,width='stretch')
-  st.caption('Tăng/giảm chỉ mô tả số liệu. Cần đọc nguyên nhân, cơ cấu tài sản và chất lượng lợi nhuận; diễn giải tham khảo không phải kết luận tuân thủ pháp luật hoặc khuyến nghị mua/bán.')
+ with st.expander('Xem phân tích chi tiết — công ty chứng khoán',expanded=False):
+  st.subheader('Bảng chỉ tiêu và so sánh hai năm')
+  for n in result['errors']:st.error(n)
+  for n in result['notes']:st.warning(n)
+  if not m['capital_source'].strip():st.caption('Chưa ghi nguồn/phạm vi cho CAR hoặc vốn khả dụng; giá trị nhập tay chưa được xác minh.')
+  if result['rows']:
+   rows=[]
+   def fmt(v,unit):return 'Chưa tính được' if v is None else f'{v*100:.2f}%' if unit=='%' else f'{v:.3f}'
+   for r in result['rows']:
+    row=dict(r);unit=r['Đơn vị'];row['t']=fmt(r['t'],unit);row['t1']=fmt(r['t1'],unit)
+    row['Thay đổi']='—' if r['Thay đổi'] is None else (f'{r["Thay đổi"]*100:+.2f} điểm %' if unit=='%' else f'{r["Thay đổi"]:+.3f} lần');rows.append(row)
+   st.dataframe(pd.DataFrame(rows),hide_index=True,width='stretch')
+   st.caption('Tăng/giảm chỉ mô tả số liệu. Cần đọc nguyên nhân, cơ cấu tài sản và chất lượng lợi nhuận; diễn giải tham khảo không phải kết luận tuân thủ pháp luật hoặc khuyến nghị mua/bán.')
  name=re.sub(r'[^A-Z0-9_-]','',m['ticker']) or 'CHUA_DAT_MA'
  st.download_button('Tải dữ liệu và phân tích Excel',financial_export_with_readout(data,result),f'{name}_{m["year"]}_{kind}.xlsx',type='primary',key=storage+'_export')
  st.caption('Excel giữ số liệu và kết quả tại thời điểm tải; nhập lại tệp đúng nhóm để dùng tiếp. Bản độc lập không tự lưu dữ liệu lâu dài trên máy chủ.')
