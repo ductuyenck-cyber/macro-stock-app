@@ -34,12 +34,12 @@ st.markdown("""
 SHEET_ID = "1zeaMCtBq0gGY_ojKCkGugQATs6DwQgHD3V9aJSTobkE"
 WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzoxnstRuSKCek9TXrqoHGPly-ercYvpSRNDw9E-XLeEKp7U2BhKF0R-avbgdOdC7wU/exec"
 
-# --- ĐỌC DỮ LIỆU TỪ GOOGLE SHEETS (CSV EXPORT) ---
+# --- ĐỌC DỮ LIỆU TỪ GOOGLE SHEETS (ĐÃ CỐ ĐỊNH TAB THÀNH VIÊN GID=537221443) ---
 @st.cache_data(ttl=5)
 def load_data_from_sheets():
     try:
-        # Tab 1: Danh sách thành viên (Tab đầu tiên nhận phản hồi Google Form)
-        members_url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv"
+        # Tab 1: Danh sách thành viên từ Google Form (Đúng GID chuẩn của bạn)
+        members_url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&gid=537221443"
         df_members = pd.read_csv(members_url)
     except Exception:
         df_members = pd.DataFrame()
@@ -53,7 +53,7 @@ def load_data_from_sheets():
         
     return df_members, df_community
 
-# --- HÀM GHI DỮ LIỆU THÔNG QUA GOOGLE APPS SCRIPT WEB APP ---
+# --- HÀM GHI DỮ LIỆU CÓ KIỂM TRA LỖI PHẢN HỒI TỪ APPS SCRIPT ---
 def save_to_gspreadsheet(new_record):
     try:
         payload = {
@@ -65,20 +65,30 @@ def save_to_gspreadsheet(new_record):
             "Nhómngành": new_record["Nhóm ngành"],
             "KếtquảĐánhgiá": new_record["Kết quả / Đánh giá"]
         }
-        response = requests.post(WEB_APP_URL, json=payload, timeout=10)
+        response = requests.post(WEB_APP_URL, json=payload, timeout=15)
         if response.status_code == 200:
-            st.cache_data.clear() # Xóa cache để cập nhật dữ liệu mới ngay lập tức
-            return True
-        return False
+            try:
+                res_json = response.json()
+                if res_json.get("status") == "success":
+                    st.cache_data.clear() # Xóa cache để cập nhật ngay lập tức
+                    return True
+                else:
+                    st.error(f"Google Apps Script báo lỗi: {res_json.get('message')}")
+                    return False
+            except:
+                st.error("Lỗi: Web App đang trả về trang đăng nhập Google. Hãy kiểm tra lại quyền truy cập (Who has access phải là Anyone).")
+                return False
+        else:
+            st.error(f"Lỗi kết nối HTTP: {response.status_code}")
+            return False
     except Exception as e:
-        st.error(f"Lỗi kết nối API: {e}")
+        st.error(f"Lỗi ngoại lệ khi gọi API: {e}")
         return False
 
 # --- NHÚNG GOOGLE FORM TRỰC TIẾP TRÊN THANH BÊN ---
 st.sidebar.markdown("---")
 with st.sidebar.expander("📝 Chưa có tài khoản? Đăng ký ngay"):
     st.markdown("Điền thông tin bên dưới:")
-    # Thay link form nhúng mới của bạn vào đây nếu cần
     form_embed_url = "https://docs.google.com/forms/d/e/1FAIpQLSeGyXK_-dnAq4IjHsKaJjKp9O89ziolpuQyvr7sXWCL7fELoA/viewform?embedded=true"
     components.iframe(form_embed_url, height=350, scrolling=True)
 
@@ -96,7 +106,7 @@ def mask_email(email):
 
 df_members, df_community = load_data_from_sheets()
 
-# --- XÁC THỰC THÀNH VIÊN ---
+# --- XÁC THỰC THÀNH VIÊN (CHÍNH XÁC TUYỆT ĐỐI THEO FILE FORM) ---
 st.sidebar.markdown("---")
 st.sidebar.title("🔐 Xác thực Thành viên")
 user_email = st.sidebar.text_input("Nhập Gmail chính chủ đã đăng ký:").strip().lower()
@@ -105,6 +115,7 @@ is_authenticated = False
 
 if user_email and "@gmail.com" in user_email:
     if not df_members.empty:
+        # Tự động tìm cột chứa từ khóa 'email' hoặc 'thư' trong Google Form
         email_col = next((col for col in df_members.columns if 'email' in col.lower() or 'thư' in col.lower()), None)
         if email_col:
             registered_emails = df_members[email_col].dropna().astype(str).str.lower().tolist()
@@ -113,10 +124,9 @@ if user_email and "@gmail.com" in user_email:
             else:
                 st.sidebar.error("❌ Email này chưa điền Form đăng ký!")
         else:
-            is_authenticated = True
+            st.sidebar.error("❌ Không tìm thấy cột chứa Email trong file Google Sheets!")
     else:
-        # Nếu form chưa có ai điền, tạm thời cho phép truy cập để test hệ thống
-        is_authenticated = True
+        st.sidebar.warning("⚠️ Danh sách thành viên đang trống. Hãy điền thử 1 lần vào Google Form trước!")
 
 if not is_authenticated:
     st.warning("⚠️ **Bảo mật:** Vui lòng nhập Gmail chính chủ đã đăng ký qua Google Form ở menu bên trái để mở khóa ứng dụng.")
@@ -135,7 +145,6 @@ else:
 # =====================================================================
 if menu == "📊 Phần 1: Dashboard Vĩ Mô & Market Timing":
     st.title("📊 Dashboard Vĩ Mô & Market Timing")
-    st.markdown("Đánh giá chu kỳ dòng tiền vĩ mô thực tế để định hướng chiến lược đầu tư.")
     
     with st.container(border=True):
         col_v1, col_v2 = st.columns(2)
@@ -148,7 +157,7 @@ if menu == "📊 Phần 1: Dashboard Vĩ Mô & Market Timing":
             
     if st.button("🔍 ĐÁNH GIÁ THỊ TRƯỜNG TOÀN DIỆN", type="primary"):
         if "-- Chọn trạng thái --" in [laisuat, tygia, dxy, nhnn]:
-            st.warning("⚠️ Vui lòng chọn đầy đủ 4 thông số vĩ mô!")
+            st.warning("⚠️ Vui lòng chọn đầy đủ 4 thông số!")
         else:
             if "Xấu" in laisuat or "Xấu" in tygia or "Xấu" in dxy or "Hút Tín phiếu" in nhnn:
                 st.session_state['macro_result'] = "🔴 ĐÈN ĐỎ (Defense / Retreat)"
@@ -178,13 +187,11 @@ if menu == "📊 Phần 1: Dashboard Vĩ Mô & Market Timing":
                 st.rerun()
 
 # =====================================================================
-# PHẦN 2: CHẤM ĐIỂM BCTC (F-SCORE & M-SCORE ĐẦY ĐỦ CÔNG THỨC)
+# PHẦN 2: CHẤM ĐIỂM BCTC (F-SCORE & M-SCORE)
 # =====================================================================
 elif menu == "🔍 Phần 2: Chấm điểm BCTC (F-Score & M-Score)":
     st.title("🔍 Chấm Điểm BCTC Doanh Nghiệp")
-    st.markdown("Tích hợp chuẩn gốc **Piotroski F-Score (9 Tiêu chí)** & **Beneish M-Score (8 Biến đầy đủ)**")
-    
-    ticker_symbol = st.text_input("Mã Cổ Phiếu / Doanh Nghiệp (VD: HPG, VNM):", "HPG").upper()
+    ticker_symbol = st.text_input("Mã Cổ Phiếu (VD: HPG, VNM):", "HPG").upper()
     
     col_t, col_t1 = st.columns(2)
     with col_t:
@@ -269,7 +276,7 @@ elif menu == "🔍 Phần 2: Chấm điểm BCTC (F-Score & M-Score)":
 # =====================================================================
 elif menu == "📚 Phần 3: Kho Dữ liệu Cộng Đồng (Ẩn danh)":
     st.title("📚 Kho Dữ liệu & Tra cứu Cộng Đồng")
-    st.markdown("Tổng hợp báo cáo tài chính và nhận định vĩ mô từ các thành viên (Đã tự động bảo mật ẩn danh).")
+    st.markdown("Dữ liệu được đồng bộ trực tiếp từ Google Sheets của hệ thống (Đã tự động bảo mật ẩn danh).")
     
     if not df_community.empty:
         df_display = df_community.copy()
