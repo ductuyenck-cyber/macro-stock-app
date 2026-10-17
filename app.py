@@ -34,12 +34,12 @@ st.markdown("""
 SHEET_ID = "1zeaMCtBq0gGY_ojKCkGugQATs6DwQgHD3V9aJSTobkE"
 WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzoxnstRuSKCek9TXrqoHGPly-ercYvpSRNDw9E-XLeEKp7U2BhKF0R-avbgdOdC7wU/exec"
 
-# --- ĐỌC DỮ LIỆU TỪ GOOGLE SHEETS (TAB FORM & TAB COMMUNITY) ---
+# --- ĐỌC DỮ LIỆU TỪ GOOGLE SHEETS (ĐỌC THẲNG TAB ĐẦU TIÊN) ---
 @st.cache_data(ttl=5)
 def load_data_from_sheets():
     try:
-        # Tab 1: Phản hồi từ Google Form (Đúng GID 537221443 của bạn)
-        members_url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&gid=537221443"
+        # Đọc tab đầu tiên (Tab chứa phản hồi Google Form mới nhất)
+        members_url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv"
         df_members = pd.read_csv(members_url)
     except Exception:
         df_members = pd.DataFrame()
@@ -102,7 +102,7 @@ def mask_email(email):
 
 df_members, df_community = load_data_from_sheets()
 
-# --- XÁC THỰC THÀNH VIÊN (TỐI ƯU TÌM KIẾM CỘT EMAIL) ---
+# --- XÁC THỰC THÀNH VIÊN (TỰ ĐỘNG NHẬN DIỆN CỘT EMAIL & HỖ TRỢ DEBUG) ---
 st.sidebar.markdown("---")
 st.sidebar.title("🔐 Xác thực Thành viên")
 user_email = st.sidebar.text_input("Nhập Gmail chính chủ đã đăng ký:").strip().lower()
@@ -111,6 +111,7 @@ is_authenticated = False
 
 if user_email and "@gmail.com" in user_email:
     if not df_members.empty:
+        # Chuẩn hóa tên cột để dễ tìm kiếm
         df_members.columns = [str(c).strip().lower() for c in df_members.columns]
         email_col = next((col for col in df_members.columns if 'email' in col or 'thư' in col), None)
         
@@ -120,8 +121,10 @@ if user_email and "@gmail.com" in user_email:
                 is_authenticated = True
             else:
                 st.sidebar.error(f"❌ Email '{user_email}' chưa điền Form đăng ký!")
+                with st.sidebar.expander("🔍 Xem danh sách email đã ghi nhận trong Sheet"):
+                    st.write(registered_emails)
         else:
-            st.sidebar.error(f"❌ Không tìm thấy cột email! Các cột trong sheet: {list(df_members.columns)}")
+            st.sidebar.error(f"❌ Không tìm thấy cột email! Các cột hiện có: {list(df_members.columns)}")
     else:
         st.sidebar.warning("⚠️ Danh sách thành viên từ Google Form đang trống. Hãy điền thử 1 lần vào Form mới!")
 
