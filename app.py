@@ -41,7 +41,7 @@ def load_data_from_sheets():
         # Tab 1: Phản hồi từ Google Form (Đúng GID 537221443 của bạn)
         members_url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&gid=537221443"
         df_members = pd.read_csv(members_url)
-    except Exception as e:
+    except Exception:
         df_members = pd.DataFrame()
         
     try:
@@ -81,11 +81,11 @@ def save_to_gspreadsheet(new_record):
         st.error(f"Lỗi ngoại lệ khi gọi API: {e}")
         return False
 
-# --- NHÚNG GOOGLE FORM TRÊN THANH BÊN ---
+# --- NHÚNG GOOGLE FORM MỚI TRÊN THANH BÊN ---
 st.sidebar.markdown("---")
 with st.sidebar.expander("📝 Chưa có tài khoản? Đăng ký ngay"):
     st.markdown("Điền thông tin Google Form bên dưới:")
-    form_embed_url = "https://docs.google.com/forms/d/e/1FAIpQLSeGyXK_-dnAq4IjHsKaJjKp9O89ziolpuQyvr7sXWCL7fELoA/viewform?embedded=true"
+    form_embed_url = "https://docs.google.com/forms/d/e/1FAIpQLScxRyXWY6H0z8KrDT0k4jHQ266z4V1hCdMioC8ZC--KC2zIfw/viewform?embedded=true"
     components.iframe(form_embed_url, height=350, scrolling=True)
 
 def mask_email(email):
@@ -111,7 +111,6 @@ is_authenticated = False
 
 if user_email and "@gmail.com" in user_email:
     if not df_members.empty:
-        # Làm sạch tên cột để dễ dàng tìm kiếm từ khóa 'email' hoặc 'thư'
         df_members.columns = [str(c).strip().lower() for c in df_members.columns]
         email_col = next((col for col in df_members.columns if 'email' in col or 'thư' in col), None)
         
@@ -122,10 +121,9 @@ if user_email and "@gmail.com" in user_email:
             else:
                 st.sidebar.error(f"❌ Email '{user_email}' chưa điền Form đăng ký!")
         else:
-            # Nếu vẫn không tìm thấy cột chứa email, hiển thị các cột hiện có để debug nhẹ
             st.sidebar.error(f"❌ Không tìm thấy cột email! Các cột trong sheet: {list(df_members.columns)}")
     else:
-        st.sidebar.warning("⚠️ Danh sách thành viên từ Google Form đang trống. Hãy điền thử 1 lần vào Form!")
+        st.sidebar.warning("⚠️ Danh sách thành viên từ Google Form đang trống. Hãy điền thử 1 lần vào Form mới!")
 
 if not is_authenticated:
     st.warning("⚠️ **Bảo mật:** Vui lòng nhập Gmail chính chủ đã đăng ký qua Google Form ở menu bên trái để mở khóa ứng dụng.")
