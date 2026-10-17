@@ -45,29 +45,37 @@ def get_gsheet_connection():
     except Exception as e:
         return None
 
-# Đọc dữ liệu thành viên và dữ liệu cộng đồng từ Google Sheets
-@st.cache_data(ttl=10)
+# Đọc dữ liệu thành viên và tự động tạo kho cộng đồng nếu chưa có
+@st.cache_data(ttl=5)
 def load_data_from_sheets():
     sheet = get_gsheet_connection()
     if not sheet:
         return pd.DataFrame(), pd.DataFrame()
+    
+    # 1. Đọc danh sách thành viên từ Tab đầu tiên của Google Form
     try:
-        # Sheet 1: Danh sách thành viên đăng ký (Tab đầu tiên)
         worksheet_members = sheet.get_worksheet(0)
-        df_members = pd.DataFrame(worksheet_members.get_all_records())
-    except:
+        data_members = worksheet_members.get_all_records()
+        df_members = pd.DataFrame(data_members) if data_members else pd.DataFrame()
+    except Exception:
         df_members = pd.DataFrame()
         
+    # 2. Đọc Kho Dữ Liệu Cộng Đồng (Tự động tạo Tab nếu chưa tồn tại)
     try:
-        # Sheet 2: Kho dữ liệu cộng đồng (Tab thứ hai, nếu chưa có sẽ tự tạo)
         worksheet_community = sheet.worksheet("Community_DB")
-        df_community = pd.DataFrame(worksheet_community.get_all_records())
-    except:
+        data_community = worksheet_community.get_all_records()
+        df_community = pd.DataFrame(data_community) if data_community else pd.DataFrame(columns=["ID", "Thời gian", "Email Thật", "Loại", "Mã CK / Nội dung", "Nhóm ngành", "Kết quả / Đánh giá"])
+    except Exception:
+        try:
+            worksheet_community = sheet.add_worksheet(title="Community_DB", rows="1000", cols="10")
+            worksheet_community.append_row(["ID", "Thời gian", "Email Thật", "Loại", "Mã CK / Nội dung", "Nhóm ngành", "Kết quả / Đánh giá"])
+        except Exception:
+            pass
         df_community = pd.DataFrame(columns=["ID", "Thời gian", "Email Thật", "Loại", "Mã CK / Nội dung", "Nhóm ngành", "Kết quả / Đánh giá"])
         
     return df_members, df_community
 
-# Hàm ghi/cập nhật dữ liệu lên Google Sheets
+# Hàm ghi dữ liệu lên Google Sheets
 def save_to_gspreadsheet(new_record):
     sheet = get_gsheet_connection()
     if not sheet:
@@ -75,19 +83,17 @@ def save_to_gspreadsheet(new_record):
     try:
         try:
             worksheet = sheet.worksheet("Community_DB")
-        except:
-            # Nếu chưa có tab Community_DB thì tự động tạo mới
+        except Exception:
             worksheet = sheet.add_worksheet(title="Community_DB", rows="1000", cols="10")
             worksheet.append_row(["ID", "Thời gian", "Email Thật", "Loại", "Mã CK / Nội dung", "Nhóm ngành", "Kết quả / Đánh giá"])
             
         records = worksheet.get_all_records()
         record_id = new_record["ID"]
         
-        # Kiểm tra xem ID (Email + Mã CK) đã tồn tại chưa để cập nhật (Sửa) hay thêm mới
         row_index = None
         for idx, row in enumerate(records):
             if str(row.get("ID")) == str(record_id):
-                row_index = idx + 2 # vì dòng 1 là header
+                row_index = idx + 2
                 break
                 
         row_values = list(new_record.values())
@@ -120,28 +126,30 @@ def mask_email(email):
 
 df_members, df_community = load_data_from_sheets()
 
-# --- ĐĂNG NHẬP XÁC THỰC ---
+# --- XÁC THỰC THÀNH VIÊN (ĐÃ THẮT CHẶT BẢO MẬT) ---
 st.sidebar.markdown("---")
 st.sidebar.title("🔐 Xác thực Thành viên")
-user_email = st.sidebar.text_input("Nhập Gmail chính chủ:").strip().lower()
+user_email = st.sidebar.text_input("Nhập Gmail chính chủ đã đăng ký:").strip().lower()
 
 is_authenticated = False
+
 if user_email and "@gmail.com" in user_email:
     if not df_members.empty:
-        email_col = next((col for col in df_members.columns if 'email' in col.lower()), None)
+        # Tìm cột chứa từ khóa 'email' trong file Google Sheets của Google Form
+        email_col = next((col for col in df_members.columns if 'email' in col.lower() or 'thư' in col.lower()), None)
         if email_col:
             registered_emails = df_members[email_col].dropna().astype(str).str.lower().tolist()
             if user_email in registered_emails:
                 is_authenticated = True
             else:
-                st.sidebar.error("❌ Email chưa đăng ký qua Google Form!")
+                st.sidebar.error("❌ Email này chưa điền Form đăng ký!")
         else:
-            is_authenticated = True
+            st.sidebar.error("❌ Không tìm thấy cột chứa Email trong file Google Sheets!")
     else:
-        is_authenticated = True
+        st.sidebar.error("⚠️ File Google Sheets danh sách thành viên đang trống hoặc chưa kết nối được!")
 
 if not is_authenticated:
-    st.warning("⚠️ Vui lòng nhập Gmail chính chủ đã đăng ký ở menu bên trái để mở khóa ứng dụng.")
+    st.warning("⚠️ **Yêu cầu bảo mật:** Bạn bắt buộc phải dùng Gmail đã đăng ký qua Google Form ở menu bên trái thì mới mở khóa được ứng dụng.")
     st.stop()
 else:
     st.sidebar.success(f"Xin chào: **{mask_email(user_email)}**")
@@ -288,7 +296,7 @@ elif menu == "🔍 Phần 2: Chấm điểm BCTC (F-Score & M-Score)":
 # =====================================================================
 elif menu == "📚 Phần 3: Kho Dữ liệu Cộng Đồng (Ẩn danh)":
     st.title("📚 Kho Dữ liệu & Tra cứu Cộng Đồng")
-    st.markdown("Dữ liệu được đồng bộ trực tiếp từ Google Sheets của hệ thống.")
+    st.markdown("Dữ liệu được đồng bộ trực tiếp từ Google Sheets của hệ thống (Đã tự động bảo mật ẩn danh).")
     
     if not df_community.empty:
         df_display = df_community.copy()
@@ -300,4 +308,4 @@ elif menu == "📚 Phần 3: Kho Dữ liệu Cộng Đồng (Ẩn danh)":
         else:
             st.dataframe(df_display, use_container_width=True)
     else:
-        st.info("Chưa có dữ liệu trong kho cộng đồng trên Google Sheets.")
+        st.info("Kho cộng đồng trên Google Sheets hiện chưa có bản ghi nào.")
